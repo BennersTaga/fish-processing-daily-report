@@ -12,8 +12,8 @@ import { HashRouter as Router, Routes, Route, Link, useNavigate } from "react-ro
  * - 寄生虫/異物=あり のときはカメラ起動可・複数画像添付可（プレビュー付き）
  */
 
-const MASTER_CSV_URL = ""; // 必要ならCSV公開URL
-const API_URL = ""; // 例: GAS WebApp URL（デモ未使用）
+const MASTER_CSV_URL = import.meta.env.VITE_MASTER_CSV_URL || "";
+const API_URL = import.meta.env.VITE_GAS_URL || "";
 const DRIVE_FOLDER_ID_PHOTOS = "1h3RCYDQrsNuBObQwKXsYM-HYtk8kE5R5";
 
 type MasterKey =
@@ -26,13 +26,13 @@ type MasterKey =
   | "origin"; // 産地（業者）
 
 const fallbackMaster: Record<MasterKey, string[]> = {
-  factory: ["第一工場", "第二工場"],
-  person: ["佐藤", "鈴木", "田中"],
-  species: ["サバ", "アジ", "サンマ"],
-  supplier: ["〇〇水産", "△△商店"],
-  admin: ["管理者A", "管理者B"],
-  ozone_person: ["佐藤", "鈴木"],
-  origin: ["北海道（〇〇水産）", "宮城県（△△商店）", "長崎県（□□水産）"],
+  factory: [],
+  person: [],
+  species: [],
+  supplier: [],
+  admin: [],
+  ozone_person: [],
+  origin: [],
 };
 
 /** CSV文字列→ {id: 選択肢[]} へ変換（1行目=名称, 2行目=ID, 3行目以降=選択肢） */
@@ -84,6 +84,22 @@ function runParserTests() {
     const t3 = arraysEqual(out.species || [], ["サバ", "アジ"]);
     const t4 = arraysEqual(out.origin || [], ["北海道（〇〇水産）", "宮城県（△△商店）"]);
 
+    // 追加: 全列（supplier, admin, ozone_person を含む）
+    const sampleAll = [
+      "工場,担当者,魚種,仕入れ先,管理者チェック,オゾン水 担当者,産地（業者）",
+      "factory,person,species,supplier,admin,ozone_person,origin",
+      "第一工場,佐藤,サバ,〇〇水産,管理者A,佐藤,北海道（〇〇水産）",
+      "第二工場,鈴木,アジ,△△商店,管理者B,鈴木,宮城県（△△商店）",
+    ].join("\n");
+    const outAll = parseMasterCsv(sampleAll);
+    const tAll1 = arraysEqual(outAll.factory || [], ["第一工場", "第二工場"]);
+    const tAll2 = arraysEqual(outAll.person || [], ["佐藤", "鈴木"]);
+    const tAll3 = arraysEqual(outAll.species || [], ["サバ", "アジ"]);
+    const tAll4 = arraysEqual(outAll.supplier || [], ["〇〇水産", "△△商店"]);
+    const tAll5 = arraysEqual(outAll.admin || [], ["管理者A", "管理者B"]);
+    const tAll6 = arraysEqual(outAll.ozone_person || [], ["佐藤", "鈴木"]);
+    const tAll7 = arraysEqual(outAll.origin || [], ["北海道（〇〇水産）", "宮城県（△△商店）"]);
+
     // CRLF + 末尾空行
     const sampleCRLF = [
       "工場,担当者",
@@ -119,8 +135,8 @@ function runParserTests() {
     const outHead = parseMasterCsv(headersOnly);
     const t10 = Object.keys(outHead).length === 0;
 
-    const all = t1 && t2 && t3 && t4 && t5 && t6 && t7 && t8 && t9 && t10;
-    console.log("[TEST] parseMasterCsv:", { t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, all });
+    const all = t1 && t2 && t3 && t4 && tAll1 && tAll2 && tAll3 && tAll4 && tAll5 && tAll6 && tAll7 && t5 && t6 && t7 && t8 && t9 && t10;
+    console.log("[TEST] parseMasterCsv:", { t1, t2, t3, t4, tAll1, tAll2, tAll3, tAll4, tAll5, tAll6, tAll7, t5, t6, t7, t8, t9, t10, all });
   } catch (e) {
     console.error("[TEST] parseMasterCsv failed:", e);
   }
@@ -164,6 +180,13 @@ type Report = {
   kg: number | null;
 };
 
+type InventoryRecordPayload = Report & {
+  parasiteYN: "あり" | "なし";
+  parasiteFiles: string[];
+  foreignYN: "あり" | "なし";
+  foreignFiles: string[];
+};
+
 function useMasterOptions() {
   const [master, setMaster] = useState<Record<MasterKey, string[]>>(() => {
     try {
@@ -189,6 +212,13 @@ function useMasterOptions() {
       setLoading(false);
     }
   };
+
+  // auto-load from CSV on mount when URL is present
+  useEffect(() => {
+    if (MASTER_CSV_URL) {
+      reload();
+    }
+  }, []);
 
   return { master, reload, loading, error };
 }
@@ -237,6 +267,30 @@ function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2,8)}`
 function getQuery() {
   const q = new URLSearchParams(window.location.hash.split("?")[1] || "");
   return Object.fromEntries(q.entries());
+}
+
+// ---- GAS integration helpers ----
+async function recordToSheet(type: "intake" | "inventory", payload: any) {
+  if (!API_URL) return;
+  const res = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "record", type, payload }),
+  });
+  if (!res.ok) throw new Error("Failed to record payload to GAS");
+}
+
+async function uploadPhotos(files: File[], prefix: string, folderId?: string) {
+  if (!API_URL || files.length === 0) return [] as string[];
+  const fd = new FormData();
+  fd.append("action", "upload");
+  fd.append("prefix", prefix);
+  if (folderId) fd.append("folderId", folderId);
+  files.forEach((f, i) => fd.append(`file${i}`, f, f.name));
+  const res = await fetch(API_URL, { method: "POST", body: fd });
+  if (!res.ok) throw new Error("Failed to upload photos to GAS");
+  const json = await res.json();
+  return (json.files || []).map((f: any) => f.url as string);
 }
 
 function Badge({ children }: { children: React.ReactNode }) {
@@ -362,12 +416,6 @@ function Home({ onReloadMaster, masterLoading, masterError }: { onReloadMaster: 
   );
 }
 
-// Google Drive 連携のためのフック（ダミー: 実運用はGAS/OAuth経由で実装）
-async function uploadPhotosToDrive(folderId: string, files: File[], prefix: string) {
-  // 実運用ではfetch(API_URL, { method:"POST", body: FormData(...) }) 等でアップロード
-  console.log("[DEMO] Upload to Drive:", { folderId, prefix, count: files.length });
-}
-
 function IntakeModal({ onClose }: { onClose: () => void; }) {
   const { master } = useMasterOptions();
   const { add } = useSpeciesSet();
@@ -409,6 +457,7 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
       const arr: Ticket[] = raw ? JSON.parse(raw) : [];
       arr.push(ticket);
       localStorage.setItem(LS_KEYS.INTAKE_SUBMISSIONS, JSON.stringify(arr));
+      await recordToSheet("intake", ticket);
       add(species);
       onClose();
     } catch {
@@ -654,8 +703,18 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
 
       const prefixPara = `寄生虫_${yyyymmdd(date)}_${person}`;
       const prefixForeign = `異物_${yyyymmdd(date)}_${person}`;
-      await uploadPhotosToDrive(DRIVE_FOLDER_ID_PHOTOS, parasitePhotos, prefixPara);
-      await uploadPhotosToDrive(DRIVE_FOLDER_ID_PHOTOS, foreignPhotos, prefixForeign);
+      const parasiteUrls = await uploadPhotos(parasitePhotos, prefixPara, DRIVE_FOLDER_ID_PHOTOS);
+      const foreignUrls   = await uploadPhotos(foreignPhotos,   prefixForeign, DRIVE_FOLDER_ID_PHOTOS);
+
+      const recordPayload: InventoryRecordPayload = {
+        ...payload,
+        parasiteYN,
+        parasiteFiles: parasiteUrls,
+        foreignYN,
+        foreignFiles: foreignUrls,
+      };
+
+      await recordToSheet("inventory", recordPayload);
 
       setPreviewOpen(true);
     } catch {
