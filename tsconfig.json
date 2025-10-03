@@ -10,7 +10,11 @@
     "noEmit": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "types": ["node", "vite/client"]
+    "types": ["node", "vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "react-router-dom": ["./src/react-router-dom"]
+    }
   },
   "include": ["src", "vite.config.ts"]
 }
