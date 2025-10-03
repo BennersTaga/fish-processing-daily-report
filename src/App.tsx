@@ -12,8 +12,8 @@ import { HashRouter as Router, Routes, Route, Link, useNavigate } from "react-ro
  * - 寄生虫/異物=あり のときはカメラ起動可・複数画像添付可（プレビュー付き）
  */
 
-const MASTER_CSV_URL = import.meta.env.VITE_MASTER_CSV_URL || "";
-const API_URL = import.meta.env.VITE_GAS_URL || "";
+const MASTER_CSV_URL = import.meta.env.VITE_MASTER_CSV_URL || ""; // CSV公開URL（任意）
+const API_URL = import.meta.env.VITE_GAS_URL || "";               // ★GAS WebApp /exec を環境変数に
 const DRIVE_FOLDER_ID_PHOTOS = "1h3RCYDQrsNuBObQwKXsYM-HYtk8kE5R5";
 
 type MasterKey =
@@ -65,93 +65,58 @@ async function fetchMasterFromCsv(url: string): Promise<Record<MasterKey, string
   return { ...fallbackMaster, ...(parsed as Record<MasterKey, string[]>) };
 }
 
-// ---- Dev用の超軽量テスト ----
+// ---- Dev用の超軽量テスト（任意）----
 function arraysEqual(a: any[], b: any[]) {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 function runParserTests() {
   try {
-    // ベーシックケース（LF）
     const sample = [
-      "工場,担当者,魚種,仕入れ先,管理者,オゾン水担当者,産地（業者）",
-      "factory,person,species,supplier,admin,ozone_person,origin",
-      "A工場,佐藤,サバ,〇〇水産,管理者A,佐藤,北海道（〇〇水産）",
-      "B工場,鈴木,アジ,△△商店,管理者B,鈴木,宮城県（△△商店）",
+      "工場,担当者,魚種,産地（業者）",
+      "factory,person,species,origin",
+      "A工場,佐藤,サバ,北海道（〇〇水産）",
+      "B工場,鈴木,アジ,宮城県（△△商店）",
     ].join("\n");
     const out = parseMasterCsv(sample);
     const t1 = arraysEqual(out.factory || [], ["A工場", "B工場"]);
     const t2 = arraysEqual(out.person || [], ["佐藤", "鈴木"]);
     const t3 = arraysEqual(out.species || [], ["サバ", "アジ"]);
-    const t4 = arraysEqual(out.supplier || [], ["〇〇水産", "△△商店"]);
-    const t5 = arraysEqual(out.admin || [], ["管理者A", "管理者B"]);
-    const t6 = arraysEqual(out.ozone_person || [], ["佐藤", "鈴木"]);
-    const t7 = arraysEqual(out.origin || [], ["北海道（〇〇水産）", "宮城県（△△商店）"]);
+    const t4 = arraysEqual(out.origin || [], ["北海道（〇〇水産）", "宮城県（△△商店）"]);
 
-    // CRLF + 末尾空行
-    const sampleCRLF = [
-      "工場,担当者",
-      "factory,person",
-      "A工場,佐藤",
-      "B工場,鈴木",
-      "",
-    ].join("\r\n");
-    const outCRLF = parseMasterCsv(sampleCRLF);
-    const t8 = arraysEqual(outCRLF.factory || [], ["A工場", "B工場"]);
-    const t9 = arraysEqual(outCRLF.person || [], ["佐藤", "鈴木"]);
-
-    // 追加テスト: 先頭/中間/末尾に空行が混在
-    const sampleWithBlanks = [
-      "",
-      "工場,担当者,魚種",
-      "factory,person,species",
-      "",
-      "A工場,佐藤,サバ",
-      "B工場,鈴木,アジ",
-      "",
+    const sampleAll = [
+      "工場,担当者,魚種,仕入れ先,管理者チェック,オゾン水 担当者,産地（業者）",
+      "factory,person,species,supplier,admin,ozone_person,origin",
+      "第一工場,佐藤,サバ,〇〇水産,管理者A,佐藤,北海道（〇〇水産）",
+      "第二工場,鈴木,アジ,△△商店,管理者B,鈴木,宮城県（△△商店）",
     ].join("\n");
+    const outAll = parseMasterCsv(sampleAll);
+    const tAll1 = arraysEqual(outAll.factory || [], ["第一工場", "第二工場"]);
+    const tAll2 = arraysEqual(outAll.person || [], ["佐藤", "鈴木"]);
+    const tAll3 = arraysEqual(outAll.species || [], ["サバ", "アジ"]);
+    const tAll4 = arraysEqual(outAll.supplier || [], ["〇〇水産", "△△商店"]);
+    const tAll5 = arraysEqual(outAll.admin || [], ["管理者A", "管理者B"]);
+    const tAll6 = arraysEqual(outAll.ozone_person || [], ["佐藤", "鈴木"]);
+    const tAll7 = arraysEqual(outAll.origin || [], ["北海道（〇〇水産）", "宮城県（△△商店）"]);
+
+    const sampleCRLF = ["工場,担当者", "factory,person", "A工場,佐藤", "B工場,鈴木", ""].join("\r\n");
+    const outCRLF = parseMasterCsv(sampleCRLF);
+    const t5 = arraysEqual(outCRLF.factory || [], ["A工場", "B工場"]);
+    const t6 = arraysEqual(outCRLF.person || [], ["佐藤", "鈴木"]);
+
+    const sampleWithBlanks = ["", "工場,担当者,魚種", "factory,person,species", "", "A工場,佐藤,サバ", "B工場,鈴木,アジ", ""].join("\n");
     const outBlank = parseMasterCsv(sampleWithBlanks);
-    const t10 = arraysEqual(outBlank.factory || [], ["A工場", "B工場"]);
-    const t11 = arraysEqual(outBlank.species || [], ["サバ", "アジ"]);
+    const t7 = arraysEqual(outBlank.factory || [], ["A工場", "B工場"]);
+    const t8 = arraysEqual(outBlank.species || [], ["サバ", "アジ"]);
 
-    // 追加テスト: 空文字（例外にならず空オブジェクトを返す想定）
     const outEmpty = parseMasterCsv("");
-    const t12 = Object.keys(outEmpty).length === 0;
+    const t9 = Object.keys(outEmpty).length === 0;
 
-    // 追加テスト: 見出しのみ
     const headersOnly = ["工場,担当者", "factory,person"].join("\n");
     const outHead = parseMasterCsv(headersOnly);
-    const t13 = Object.keys(outHead).length === 0;
+    const t10 = Object.keys(outHead).length === 0;
 
-    const all =
-      t1 &&
-      t2 &&
-      t3 &&
-      t4 &&
-      t5 &&
-      t6 &&
-      t7 &&
-      t8 &&
-      t9 &&
-      t10 &&
-      t11 &&
-      t12 &&
-      t13;
-    console.log("[TEST] parseMasterCsv:", {
-      t1,
-      t2,
-      t3,
-      t4,
-      t5,
-      t6,
-      t7,
-      t8,
-      t9,
-      t10,
-      t11,
-      t12,
-      t13,
-      all,
-    });
+    const all = t1 && t2 && t3 && t4 && tAll1 && tAll2 && tAll3 && tAll4 && tAll5 && tAll6 && tAll7 && t5 && t6 && t7 && t8 && t9 && t10;
+    console.log("[TEST] parseMasterCsv:", { all });
   } catch (e) {
     console.error("[TEST] parseMasterCsv failed:", e);
   }
@@ -163,7 +128,7 @@ const LS_KEYS = {
   MASTER: "fish-demo.master",
   SPECIES_SET: "fish-demo.speciesSet",
   INTAKE_SUBMISSIONS: "fish-demo.intakeSubmissions", // チケット
-  INVENTORY_REPORTS: "fish-demo.inventoryReports", // 消込
+  INVENTORY_REPORTS: "fish-demo.inventoryReports",   // 消込
 };
 
 type Ticket = {
@@ -195,6 +160,29 @@ type Report = {
   kg: number | null;
 };
 
+// ---- GAS integration helpers ----
+async function recordToSheet(type: "intake" | "inventory", payload: any) {
+  if (!API_URL) return; // ENV未設定なら何もしない
+  const fd = new FormData();
+  fd.append("action", "record");
+  fd.append("type", type);
+  fd.append("payload", JSON.stringify(payload));
+  // Apps Script のCORS制限回避（fire-and-forget）
+  await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
+}
+
+/** 画像アップロード。no-cors のためURLは返さず空配列を返す想定 */
+async function uploadPhotos(files: File[], prefix: string, folderId?: string): Promise<string[]> {
+  if (!API_URL || files.length === 0) return [];
+  const fd = new FormData();
+  fd.append("action", "upload");
+  fd.append("prefix", prefix);
+  if (folderId) fd.append("folderId", folderId);
+  files.forEach((f, i) => fd.append(`file${i}`, f, f.name));
+  await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
+  return []; // スプレッドシート側でログ確認
+}
+
 function useMasterOptions() {
   const [master, setMaster] = useState<Record<MasterKey, string[]>>(() => {
     try {
@@ -221,7 +209,7 @@ function useMasterOptions() {
     }
   };
 
-  // auto-load from CSV on mount when URL is present
+  // 初回マウント時、自動でCSV(リスト)から読込（URL がある場合）
   useEffect(() => {
     if (MASTER_CSV_URL) {
       reload();
@@ -277,31 +265,6 @@ function getQuery() {
   return Object.fromEntries(q.entries());
 }
 
-// ---- GAS integration helpers ----
-async function recordToSheet(type: "intake" | "inventory", payload: any) {
-  // ENV 未設定なら何もしない（UIは止めない）
-  if (!API_URL) return;
-  const fd = new FormData();
-  fd.append("action", "record");
-  fd.append("type", type);
-  fd.append("payload", JSON.stringify(payload));
-  // Apps Script の CORS 制限回避（fire-and-forget）
-  await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
-}
-
-/** 画像アップロード。URL は取得しない想定（GAS 側で保存される）。*/
-async function uploadPhotos(files: File[], prefix: string, folderId?: string): Promise<string[]> {
-  if (!API_URL || files.length === 0) return [];
-  const fd = new FormData();
-  fd.append("action", "upload");
-  fd.append("prefix", prefix);
-  if (folderId) fd.append("folderId", folderId);
-  files.forEach((f, i) => fd.append(`file${i}`, f, f.name));
-  await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
-  // no-cors のため応答は読めない。スプレッドシート側で確認する運用。
-  return [];
-}
-
 function Badge({ children }: { children: React.ReactNode }) {
   return <span className="inline-flex items-center rounded-full bg-sky-100 text-sky-700 px-2 py-0.5 text-xs font-medium">{children}</span>;
 }
@@ -327,9 +290,9 @@ function Header() {
       <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="font-bold text-lg flex items-center gap-2">🐟 魚日報デモ</div>
         <div className="hidden md:flex gap-2 text-xs">
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/">ホーム</Link>
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/intake">チケット作成</Link>
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/inventory">在庫報告</Link>
+          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg白/20" to="/">ホーム</Link>
+          <Link className="px-3 py-1.5 rounded-full bg白/10 hover:bg白/20" to="/intake">チケット作成</Link>
+          <Link className="px-3 py-1.5 rounded-full bg白/10 hover:bg白/20" to="/inventory">在庫報告</Link>
         </div>
       </div>
     </div>
@@ -499,7 +462,7 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
           </div>
           {err && <p className="text-red-600 text-sm">{err}</p>}
           <div className="flex gap-2">
-            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">登録</button>
+            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text白 text-sm shadow">登録</button>
             <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">キャンセル</button>
           </div>
         </form>
@@ -534,7 +497,6 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
     if (master.admin.length) setAdmin(master.admin[0]);
   }, [master]);
 
-  // オゾン水 実施=なし → 担当者を「なし」に固定、ありなら先頭候補へ
   useEffect(() => {
     if (ozone === "なし") {
       setOzonePerson("なし");
@@ -570,9 +532,9 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
   };
 
   return (
-    <div className="min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to-white">
+    <div className="min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to白">
       <div className="max-w-5xl mx-auto p-4">
-        <div className="mb-4 p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm flex items-center justify-between">
+        <div className="mb-4 p-4 rounded-3xl bg白 ring-1 ring-sky-100 shadow-sm flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-sky-900">チケット作成（加工する魚原材料）</h1>
             <p className="text-slate-600 text-sm">魚種ごとの作業をチケットとして起票します。</p>
@@ -600,8 +562,8 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
           {err && <p className="text-red-600 text-sm">{err}</p>}
 
           <div className="flex gap-3">
-            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">登録</button>
-            <Link to="/" className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">ホームへ</Link>
+            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text白 text-sm shadow">登録</button>
+            <Link to="/" className="px-5 py-2.5 rounded-full bg白 ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">ホームへ</Link>
           </div>
         </form>
 
@@ -622,7 +584,7 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
 
 function ToxicBox({ valueYN, setYN, note, setNote }: { valueYN: "あり" | "なし"; setYN: (v: "あり" | "なし") => void; note: string; setNote: (v: string) => void; }) {
   return (
-    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+    <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100">
       <label className="block text-sm font-medium mb-1 text-slate-700">目視確認 有毒魚</label>
       <div className="flex items-center gap-6 text-sm mb-2">
         <label className="flex items-center gap-2"><input type="radio" checked={valueYN === "あり"} onChange={() => setYN("あり")} />あり</label>
@@ -644,7 +606,7 @@ function TicketListPreview() {
   }, []);
   if (!items.length) return null;
   return (
-    <div className="mt-6 p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm">
+    <div className="mt-6 p-4 rounded-3xl bg白 ring-1 ring-sky-100 shadow-sm">
       <h2 className="font-semibold text-sky-900 mb-3">最近作成したチケット</h2>
       <ul className="space-y-2 text-sm">
         {items.map((x: Ticket, i: number) => (
@@ -714,14 +676,12 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
       const prefixPara = `寄生虫_${yyyymmdd(date)}_${person}`;
       const prefixForeign = `異物_${yyyymmdd(date)}_${person}`;
       const parasiteUrls = await uploadPhotos(parasitePhotos, prefixPara, DRIVE_FOLDER_ID_PHOTOS);
-      const foreignUrls = await uploadPhotos(foreignPhotos, prefixForeign, DRIVE_FOLDER_ID_PHOTOS);
+      const foreignUrls  = await uploadPhotos(foreignPhotos,  prefixForeign, DRIVE_FOLDER_ID_PHOTOS);
 
       await recordToSheet("inventory", {
         ...payload,
-        parasiteYN,
-        parasiteFiles: parasiteUrls,
-        foreignYN,
-        foreignFiles: foreignUrls,
+        parasiteYN,  parasiteFiles: parasiteUrls,
+        foreignYN,   foreignFiles:  foreignUrls,
       });
 
       setPreviewOpen(true);
@@ -731,9 +691,9 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
   };
 
   return (
-    <div className="min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to-white">
+    <div className="min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to白">
       <div className="max-w-5xl mx-auto p-4">
-        <div className="mb-4 p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm flex items-center justify-between">
+        <div className="mb-4 p-4 rounded-3xl bg白 ring-1 ring-sky-100 shadow-sm flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-sky-900">魚原料在庫報告書</h1>
             <p className="text-slate-600 text-sm">作成済みのチケットから対象魚種を選び、在庫実績を記録します。</p>
@@ -741,11 +701,11 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
           <Badge>✅ Reconcile</Badge>
         </div>
 
-        <div className="p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm mb-4">
+        <div className="p-4 rounded-3xl bg白 ring-1 ring-sky-100 shadow-sm mb-4">
           <label className="block font-medium mb-2">未消込のチケット（魚種）</label>
           <div className="flex flex-wrap gap-2">
             {(speciesOptions.length ? speciesOptions : ["（チケット未作成）"]).map((s) => (
-              <button key={s} onClick={() => setSpecies(s)} type="button" className={`px-3 py-1.5 rounded-full text-sm ring-1 transition ${species === s ? "bg-sky-600 text-white ring-sky-600" : "bg-sky-50 text-sky-700 ring-sky-200 hover:ring-sky-300"}`}>
+              <button key={s} onClick={() => setSpecies(s)} type="button" className={`px-3 py-1.5 rounded-full text-sm ring-1 transition ${species === s ? "bg-sky-600 text白 ring-sky-600" : "bg-sky-50 text-sky-700 ring-sky-200 hover:ring-sky-300"}`}>
                 {s}
               </button>
             ))}
@@ -763,7 +723,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
             <Select label="魚種（チケット選択）" value={species} onChange={setSpecies} options={speciesOptions} />
             <Select label="産地（業者）" value={origin} onChange={setOrigin} options={master.origin} />
           </div>
-          <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+          <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100">
             <label className="block font-medium mb-2">加工状態（該当するものを選択）</label>
             <div className="grid md:grid-cols-3 gap-2 text-sm">
               {["ラウンド", "頭落とし（腹出）", "三枚卸し", "切り身", "柵", "刺身"].map((label) => (
@@ -775,7 +735,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
             </div>
           </div>
 
-          {/* ▼ ここに移設: 目視確認（寄生虫・異物） */}
+          {/* ▼ 目視確認（寄生虫・異物） */}
           <div className="grid md:grid-cols-2 gap-4">
             <FileGroupYNMulti labelYN="目視確認 寄生虫" yn={parasiteYN} setYN={setParasiteYN} labelFile="寄生虫の写真（ありの場合1枚以上必須）" files={parasitePhotos} setFiles={setParasitePhotos} requiredWhenYes />
             <FileGroupYNMulti labelYN="目視確認 異物" yn={foreignYN} setYN={setForeignYN} labelFile="異物の写真（ありの場合1枚以上必須）" files={foreignPhotos} setFiles={setForeignPhotos} requiredWhenYes />
@@ -784,8 +744,8 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
           {err && <p className="text-red-600 text-sm">{err}</p>}
           <NumberInput label="kg数（小数1位まで）" value={kg} onChange={setKg} step={0.1} min={0} />
           <div className="flex gap-3">
-            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">在庫報告を登録</button>
-            <Link to="/" className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">ホームへ</Link>
+            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text白 text-sm shadow">在庫報告を登録</button>
+            <Link to="/" className="px-5 py-2.5 rounded-full bg白 ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">ホームへ</Link>
           </div>
         </form>
       </div>
@@ -805,7 +765,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
 // ------------------------ 汎用UI ------------------------
 function Select({ label, value, onChange, options, disabled }: { label: string; value: string; onChange: (v: string) => void; options: string[]; disabled?: boolean; }) {
   return (
-    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+    <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100">
       <label className="block text-sm font-medium mb-1 text-slate-700">{label}</label>
       <select
         className="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 disabled:opacity-50 disabled:bg-slate-50"
@@ -822,7 +782,7 @@ function Select({ label, value, onChange, options, disabled }: { label: string; 
 }
 function DateInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void; }) {
   return (
-    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+    <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100">
       <label className="block text-sm font-medium mb-1 text-slate-700">{label}</label>
       <input type="date" className="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" value={value} onChange={(e) => onChange(e.target.value)} />
     </div>
@@ -830,7 +790,7 @@ function DateInput({ label, value, onChange }: { label: string; value: string; o
 }
 function TextInput({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; }) {
   return (
-    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+    <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100">
       <label className="block text-sm font-medium mb-1 text-slate-700">{label}</label>
       <input type="text" className="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
     </div>
@@ -838,7 +798,7 @@ function TextInput({ label, value, onChange, placeholder }: { label: string; val
 }
 function NumberInput({ label, value, onChange, step, min }: { label: string; value: string; onChange: (v: string) => void; step?: number; min?: number; }) {
   return (
-    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+    <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100">
       <label className="block text-sm font-medium mb-1 text-slate-700">{label}</label>
       <input type="number" className="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" value={value} onChange={(e) => onChange(e.target.value)} step={step} min={min} />
     </div>
@@ -846,7 +806,7 @@ function NumberInput({ label, value, onChange, step, min }: { label: string; val
 }
 function RadioYN({ label, value, onChange }: { label: string; value: "あり" | "なし"; onChange: (v: "あり" | "なし") => void; }) {
   return (
-    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+    <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100">
       <label className="block text-sm font-medium mb-1 text-slate-700">{label}</label>
       <div className="flex items-center gap-6 text-sm">
         <label className="flex items-center gap-2">
@@ -861,7 +821,7 @@ function RadioYN({ label, value, onChange }: { label: string; value: "あり" | 
 }
 function FileGroupYNMulti({ labelYN, yn, setYN, labelFile, files, setFiles, requiredWhenYes }: { labelYN: string; yn: "あり" | "なし"; setYN: (v: "あり" | "なし") => void; labelFile: string; files: File[]; setFiles: (f: File[]) => void; requiredWhenYes?: boolean; }) {
   return (
-    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100 grid gap-3">
+    <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100 grid gap-3">
       <RadioYN label={labelYN} value={yn} onChange={setYN} />
       {yn === "あり" && (
         <div>
@@ -893,7 +853,7 @@ function FileGroupYNMulti({ labelYN, yn, setYN, labelFile, files, setFiles, requ
 function PhotosPreviewModal({ title, parasite, foreign, onClose }: { title: string; parasite: File[]; foreign: File[]; onClose: () => void; }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-3xl p-6 w-[min(720px,95vw)] max-h-[90vh] overflow-auto ring-1 ring-sky-100 shadow-xl">
+      <div className="bg白 rounded-3xl p-6 w-[min(720px,95vw)] max-h-[90vh] overflow-auto ring-1 ring-sky-100 shadow-xl">
         <h3 className="text-lg font-semibold text-sky-900 mb-3">{title}</h3>
         <div className="grid md:grid-cols-2 gap-6">
           <div>
@@ -914,7 +874,7 @@ function PhotosPreviewModal({ title, parasite, foreign, onClose }: { title: stri
           </div>
         </div>
         <div className="mt-4 text-right">
-          <button onClick={onClose} className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">OK</button>
+          <button onClick={onClose} className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text白 text-sm shadow">OK</button>
         </div>
       </div>
     </div>
