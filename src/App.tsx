@@ -13,7 +13,7 @@ import { HashRouter as Router, Routes, Route, Link, useNavigate } from "react-ro
  */
 
 const MASTER_CSV_URL = import.meta.env.VITE_MASTER_CSV_URL || ""; // 必要ならCSV公開URL
-const API_URL = ""; // 例: GAS WebApp URL（デモ未使用）
+const API_URL = import.meta.env.VITE_GAS_URL || ""; // 例: GAS WebApp URL
 const DRIVE_FOLDER_ID_PHOTOS = "1h3RCYDQrsNuBObQwKXsYM-HYtk8kE5R5";
 
 type MasterKey =
@@ -195,6 +195,13 @@ type Report = {
   kg: number | null;
 };
 
+type InventoryRecordPayload = Report & {
+  parasiteYN: "あり" | "なし";
+  parasiteFiles: string[];
+  foreignYN: "あり" | "なし";
+  foreignFiles: string[];
+};
+
 function useMasterOptions() {
   const [master, setMaster] = useState<Record<MasterKey, string[]>>(() => {
     try {
@@ -275,6 +282,34 @@ function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2,8)}`
 function getQuery() {
   const q = new URLSearchParams(window.location.hash.split("?")[1] || "");
   return Object.fromEntries(q.entries());
+}
+
+// ---- GAS integration helpers ----
+async function recordToSheet(type: "intake" | "inventory", payload: any) {
+  if (!API_URL) return;
+  const res = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "record", type, payload }),
+  });
+  if (!res.ok) {
+    throw new Error("Failed to record payload to GAS");
+  }
+}
+
+async function uploadPhotos(files: File[], prefix: string, folderId?: string) {
+  if (!API_URL || files.length === 0) return [] as string[];
+  const fd = new FormData();
+  fd.append("action", "upload");
+  fd.append("prefix", prefix);
+  if (folderId) fd.append("folderId", folderId);
+  files.forEach((f, i) => fd.append(`file${i}`, f, f.name));
+  const res = await fetch(API_URL, { method: "POST", body: fd });
+  if (!res.ok) {
+    throw new Error("Failed to upload photos to GAS");
+  }
+  const json = await res.json();
+  return (json.files || []).map((f: any) => f.url as string);
 }
 
 function Badge({ children }: { children: React.ReactNode }) {
@@ -400,12 +435,6 @@ function Home({ onReloadMaster, masterLoading, masterError }: { onReloadMaster: 
   );
 }
 
-// Google Drive 連携のためのフック（ダミー: 実運用はGAS/OAuth経由で実装）
-async function uploadPhotosToDrive(folderId: string, files: File[], prefix: string) {
-  // 実運用ではfetch(API_URL, { method:"POST", body: FormData(...) }) 等でアップロード
-  console.log("[DEMO] Upload to Drive:", { folderId, prefix, count: files.length });
-}
-
 function IntakeModal({ onClose }: { onClose: () => void; }) {
   const { master } = useMasterOptions();
   const { add } = useSpeciesSet();
@@ -447,6 +476,7 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
       const arr: Ticket[] = raw ? JSON.parse(raw) : [];
       arr.push(ticket);
       localStorage.setItem(LS_KEYS.INTAKE_SUBMISSIONS, JSON.stringify(arr));
+      await recordToSheet("intake", ticket);
       add(species);
       onClose();
     } catch {
@@ -692,8 +722,26 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
 
       const prefixPara = `寄生虫_${yyyymmdd(date)}_${person}`;
       const prefixForeign = `異物_${yyyymmdd(date)}_${person}`;
-      await uploadPhotosToDrive(DRIVE_FOLDER_ID_PHOTOS, parasitePhotos, prefixPara);
-      await uploadPhotosToDrive(DRIVE_FOLDER_ID_PHOTOS, foreignPhotos, prefixForeign);
+      const parasiteUrls = await uploadPhotos(parasitePhotos, prefixPara, DRIVE_FOLDER_ID_PHOTOS);
+      const foreignUrls = await uploadPhotos(foreignPhotos, prefixForeign, DRIVE_FOLDER_ID_PHOTOS);
+
+      const recordPayload: InventoryRecordPayload = {
+        ticketId,
+        factory,
+        date,
+        person,
+        purchaseDate,
+        species,
+        origin,
+        state,
+        kg: kg ? Number(kg) : null,
+        parasiteYN,
+        parasiteFiles: parasiteUrls,
+        foreignYN,
+        foreignFiles: foreignUrls,
+      };
+
+      await recordToSheet("inventory", recordPayload);
 
       setPreviewOpen(true);
     } catch {
