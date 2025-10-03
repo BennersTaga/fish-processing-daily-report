@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { HashRouter as Router, Routes, Route, Link, useNavigate } from "react-router-dom";
 
 /**
- * 魚日報デモ（加工する魚原材料 / 魚原料在庫報告書）— デザイン刷新版（バグ修正＋UI強化）
+ * 魚日報デモ（加工する魚原材料 / 魚原料在庫報告書）
  * - 正規表現修正: CSV分割を `text.split(/\r?\n/)` に統一
- * - ホーム画面: 月切替＋表形式、右上「仕入れを報告する」モーダル、行ごとの「在庫報告をする」
+ * - ホーム: 月切替＋表形式、右上「仕入れを報告する」モーダル、行ごとの「在庫報告をする」
  * - Intake: 「目視確認 有毒魚」と「気づいたこと（有毒魚）」を同一ボックスに統合
  * - Inventory: 「加工状態（単一選択）」に変更、産地（業者）を選択式に変更
  * - 在庫報告登録後はホームの該当行が自動でグレー化＆ステータス「報告完了」
  * - 仕入れモーダルの「年月日」を「仕入れの年月日」に変更し、ホーム1列目に反映
- * - 寄生虫/異物=あり のときはカメラ起動可・複数画像添付可（プレビュー付き）
+ * - 寄生虫/異物=あり はカメラ起動可・複数画像添付可（プレビュー付き）
  */
 
 const MASTER_CSV_URL = import.meta.env.VITE_MASTER_CSV_URL || "";
@@ -135,7 +135,10 @@ function runParserTests() {
     const outHead = parseMasterCsv(headersOnly);
     const t10 = Object.keys(outHead).length === 0;
 
-    const all = t1 && t2 && t3 && t4 && tAll1 && tAll2 && tAll3 && tAll4 && tAll5 && tAll6 && tAll7 && t5 && t6 && t7 && t8 && t9 && t10;
+    const all =
+      t1 && t2 && t3 && t4 &&
+      tAll1 && tAll2 && tAll3 && tAll4 && tAll5 && tAll6 && tAll7 &&
+      t5 && t6 && t7 && t8 && t9 && t10;
     console.log("[TEST] parseMasterCsv:", { t1, t2, t3, t4, tAll1, tAll2, tAll3, tAll4, tAll5, tAll6, tAll7, t5, t6, t7, t8, t9, t10, all });
   } catch (e) {
     console.error("[TEST] parseMasterCsv failed:", e);
@@ -215,9 +218,7 @@ function useMasterOptions() {
 
   // auto-load from CSV on mount when URL is present
   useEffect(() => {
-    if (MASTER_CSV_URL) {
-      reload();
-    }
+    if (MASTER_CSV_URL) reload();
   }, []);
 
   return { master, reload, loading, error };
@@ -271,7 +272,7 @@ function getQuery() {
 
 // ---- GAS integration helpers ----
 async function recordToSheet(type: "intake" | "inventory", payload: any) {
-  if (!API_URL) return;
+  if (!API_URL) return; // ENV未設定なら黙ってスキップ（UIは壊さない）
   const res = await fetch(API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -318,9 +319,9 @@ function Header() {
       <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="font-bold text-lg flex items-center gap-2">🐟 魚日報デモ</div>
         <div className="hidden md:flex gap-2 text-xs">
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/">ホーム</Link>
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/intake">チケット作成</Link>
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/inventory">在庫報告</Link>
+          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg白/20" to="/">ホーム</Link>
+          <Link className="px-3 py-1.5 rounded-full bg白/10 hover:bg白/20" to="/intake">チケット作成</Link>
+          <Link className="px-3 py-1.5 rounded-full bg白/10 hover:bg白/20" to="/inventory">在庫報告</Link>
         </div>
       </div>
     </div>
@@ -404,7 +405,7 @@ function Home({ onReloadMaster, masterLoading, masterError }: { onReloadMaster: 
 
         <div className="mt-6 p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
           <h2 className="font-semibold text-sky-900 mb-2">マスター再読込</h2>
-          <button onClick={onReloadMaster} className="px-4 py-2 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm disabled:opacity-50" disabled={masterLoading}>
+          <button onClick={onReloadMaster} className="px-4 py-2 rounded-full bg-sky-600 hover:bg-sky-700 text白 text-sm disabled:opacity-50" disabled={masterLoading}>
             {masterLoading ? "読込中..." : "マスターを再読込"}
           </button>
           {masterError && <p className="text-red-600 text-sm mt-2">{masterError}</p>}
@@ -713,7 +714,6 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
         foreignYN,
         foreignFiles: foreignUrls,
       };
-
       await recordToSheet("inventory", recordPayload);
 
       setPreviewOpen(true);
@@ -767,7 +767,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
             </div>
           </div>
 
-          {/* ▼ ここに移設: 目視確認（寄生虫・異物） */}
+          {/* 目視確認（寄生虫・異物） */}
           <div className="grid md:grid-cols-2 gap-4">
             <FileGroupYNMulti labelYN="目視確認 寄生虫" yn={parasiteYN} setYN={setParasiteYN} labelFile="寄生虫の写真（ありの場合1枚以上必須）" files={parasitePhotos} setFiles={setParasitePhotos} requiredWhenYes />
             <FileGroupYNMulti labelYN="目視確認 異物" yn={foreignYN} setYN={setForeignYN} labelFile="異物の写真（ありの場合1枚以上必須）" files={foreignPhotos} setFiles={setForeignPhotos} requiredWhenYes />
@@ -864,7 +864,7 @@ function FileGroupYNMulti({ labelYN, yn, setYN, labelFile, files, setFiles, requ
             capture="environment"
             multiple
             className="w-full border rounded-xl px-3 py-2 text-sm"
-            onChange={(e) => setFiles(Array.from(e.target.files || []))}
+            onChange={(e) => setFiles(Array.from((e.target as HTMLInputElement).files || []))}
           />
           {requiredWhenYes && files.length === 0 && (
             <p className="text-xs text-red-600 mt-1">ありの場合は写真が1枚以上必須です</p>
