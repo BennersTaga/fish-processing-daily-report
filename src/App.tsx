@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { HashRouter as Router, Routes, Route, Link, useNavigate } from "react-router-dom";
 
 /**
- * 魚日報デモ（加工する魚原材料 / 魚原料在庫報告書）— デザイン刷新版（バグ修正＋UI強化）
+ * 魚日報デモ（加工する魚原材料 / 魚原料在庫報告書）
  * - 正規表現修正: CSV分割を `text.split(/\r?\n/)` に統一
- * - ホーム画面: 月切替＋表形式、右上「仕入れを報告する」モーダル、行ごとの「在庫報告をする」
+ * - ホーム: 月切替＋表形式、右上「仕入れを報告する」モーダル、行ごとの「在庫報告をする」
  * - Intake: 「目視確認 有毒魚」と「気づいたこと（有毒魚）」を同一ボックスに統合
  * - Inventory: 「加工状態（単一選択）」に変更、産地（業者）を選択式に変更
  * - 在庫報告登録後はホームの該当行が自動でグレー化＆ステータス「報告完了」
  * - 仕入れモーダルの「年月日」を「仕入れの年月日」に変更し、ホーム1列目に反映
- * - 寄生虫/異物=あり のときはカメラ起動可・複数画像添付可（プレビュー付き）
+ * - 寄生虫/異物=あり はカメラ起動可・複数画像添付可（プレビュー付き）
  */
 
 const MASTER_CSV_URL = import.meta.env.VITE_MASTER_CSV_URL || "";
@@ -73,19 +73,32 @@ function runParserTests() {
   try {
     // ベーシックケース（LF）
     const sample = [
-      "工場,担当者,魚種,仕入れ先,管理者,オゾン水担当者,産地（業者）",
-      "factory,person,species,supplier,admin,ozone_person,origin",
-      "A工場,佐藤,サバ,〇〇水産,管理者A,佐藤,北海道（〇〇水産）",
-      "B工場,鈴木,アジ,△△商店,管理者B,鈴木,宮城県（△△商店）",
+      "工場,担当者,魚種,産地（業者）",
+      "factory,person,species,origin",
+      "A工場,佐藤,サバ,北海道（〇〇水産）",
+      "B工場,鈴木,アジ,宮城県（△△商店）",
     ].join("\n");
     const out = parseMasterCsv(sample);
     const t1 = arraysEqual(out.factory || [], ["A工場", "B工場"]);
     const t2 = arraysEqual(out.person || [], ["佐藤", "鈴木"]);
     const t3 = arraysEqual(out.species || [], ["サバ", "アジ"]);
-    const t4 = arraysEqual(out.supplier || [], ["〇〇水産", "△△商店"]);
-    const t5 = arraysEqual(out.admin || [], ["管理者A", "管理者B"]);
-    const t6 = arraysEqual(out.ozone_person || [], ["佐藤", "鈴木"]);
-    const t7 = arraysEqual(out.origin || [], ["北海道（〇〇水産）", "宮城県（△△商店）"]);
+    const t4 = arraysEqual(out.origin || [], ["北海道（〇〇水産）", "宮城県（△△商店）"]);
+
+    // 追加: 全列（supplier, admin, ozone_person を含む）
+    const sampleAll = [
+      "工場,担当者,魚種,仕入れ先,管理者チェック,オゾン水 担当者,産地（業者）",
+      "factory,person,species,supplier,admin,ozone_person,origin",
+      "第一工場,佐藤,サバ,〇〇水産,管理者A,佐藤,北海道（〇〇水産）",
+      "第二工場,鈴木,アジ,△△商店,管理者B,鈴木,宮城県（△△商店）",
+    ].join("\n");
+    const outAll = parseMasterCsv(sampleAll);
+    const tAll1 = arraysEqual(outAll.factory || [], ["第一工場", "第二工場"]);
+    const tAll2 = arraysEqual(outAll.person || [], ["佐藤", "鈴木"]);
+    const tAll3 = arraysEqual(outAll.species || [], ["サバ", "アジ"]);
+    const tAll4 = arraysEqual(outAll.supplier || [], ["〇〇水産", "△△商店"]);
+    const tAll5 = arraysEqual(outAll.admin || [], ["管理者A", "管理者B"]);
+    const tAll6 = arraysEqual(outAll.ozone_person || [], ["佐藤", "鈴木"]);
+    const tAll7 = arraysEqual(outAll.origin || [], ["北海道（〇〇水産）", "宮城県（△△商店）"]);
 
     // CRLF + 末尾空行
     const sampleCRLF = [
@@ -96,8 +109,8 @@ function runParserTests() {
       "",
     ].join("\r\n");
     const outCRLF = parseMasterCsv(sampleCRLF);
-    const t8 = arraysEqual(outCRLF.factory || [], ["A工場", "B工場"]);
-    const t9 = arraysEqual(outCRLF.person || [], ["佐藤", "鈴木"]);
+    const t5 = arraysEqual(outCRLF.factory || [], ["A工場", "B工場"]);
+    const t6 = arraysEqual(outCRLF.person || [], ["佐藤", "鈴木"]);
 
     // 追加テスト: 先頭/中間/末尾に空行が混在
     const sampleWithBlanks = [
@@ -110,48 +123,23 @@ function runParserTests() {
       "",
     ].join("\n");
     const outBlank = parseMasterCsv(sampleWithBlanks);
-    const t10 = arraysEqual(outBlank.factory || [], ["A工場", "B工場"]);
-    const t11 = arraysEqual(outBlank.species || [], ["サバ", "アジ"]);
+    const t7 = arraysEqual(outBlank.factory || [], ["A工場", "B工場"]);
+    const t8 = arraysEqual(outBlank.species || [], ["サバ", "アジ"]);
 
     // 追加テスト: 空文字（例外にならず空オブジェクトを返す想定）
     const outEmpty = parseMasterCsv("");
-    const t12 = Object.keys(outEmpty).length === 0;
+    const t9 = Object.keys(outEmpty).length === 0;
 
     // 追加テスト: 見出しのみ
     const headersOnly = ["工場,担当者", "factory,person"].join("\n");
     const outHead = parseMasterCsv(headersOnly);
-    const t13 = Object.keys(outHead).length === 0;
+    const t10 = Object.keys(outHead).length === 0;
 
     const all =
-      t1 &&
-      t2 &&
-      t3 &&
-      t4 &&
-      t5 &&
-      t6 &&
-      t7 &&
-      t8 &&
-      t9 &&
-      t10 &&
-      t11 &&
-      t12 &&
-      t13;
-    console.log("[TEST] parseMasterCsv:", {
-      t1,
-      t2,
-      t3,
-      t4,
-      t5,
-      t6,
-      t7,
-      t8,
-      t9,
-      t10,
-      t11,
-      t12,
-      t13,
-      all,
-    });
+      t1 && t2 && t3 && t4 &&
+      tAll1 && tAll2 && tAll3 && tAll4 && tAll5 && tAll6 && tAll7 &&
+      t5 && t6 && t7 && t8 && t9 && t10;
+    console.log("[TEST] parseMasterCsv:", { t1, t2, t3, t4, tAll1, tAll2, tAll3, tAll4, tAll5, tAll6, tAll7, t5, t6, t7, t8, t9, t10, all });
   } catch (e) {
     console.error("[TEST] parseMasterCsv failed:", e);
   }
@@ -195,6 +183,13 @@ type Report = {
   kg: number | null;
 };
 
+type InventoryRecordPayload = Report & {
+  parasiteYN: "あり" | "なし";
+  parasiteFiles: string[];
+  foreignYN: "あり" | "なし";
+  foreignFiles: string[];
+};
+
 function useMasterOptions() {
   const [master, setMaster] = useState<Record<MasterKey, string[]>>(() => {
     try {
@@ -223,9 +218,7 @@ function useMasterOptions() {
 
   // auto-load from CSV on mount when URL is present
   useEffect(() => {
-    if (MASTER_CSV_URL) {
-      reload();
-    }
+    if (MASTER_CSV_URL) reload();
   }, []);
 
   return { master, reload, loading, error };
@@ -285,18 +278,18 @@ async function recordToSheet(type: "intake" | "inventory", payload: any) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "record", type, payload }),
   });
-  if (!res.ok) throw new Error("GAS record failed");
+  if (!res.ok) throw new Error("Failed to record payload to GAS");
 }
 
 async function uploadPhotos(files: File[], prefix: string, folderId?: string) {
-  if (!API_URL || files.length === 0) return [];
+  if (!API_URL || files.length === 0) return [] as string[];
   const fd = new FormData();
   fd.append("action", "upload");
   fd.append("prefix", prefix);
   if (folderId) fd.append("folderId", folderId);
   files.forEach((f, i) => fd.append(`file${i}`, f, f.name));
   const res = await fetch(API_URL, { method: "POST", body: fd });
-  if (!res.ok) throw new Error("GAS upload failed");
+  if (!res.ok) throw new Error("Failed to upload photos to GAS");
   const json = await res.json();
   return (json.files || []).map((f: any) => f.url as string);
 }
@@ -326,9 +319,9 @@ function Header() {
       <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="font-bold text-lg flex items-center gap-2">🐟 魚日報デモ</div>
         <div className="hidden md:flex gap-2 text-xs">
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/">ホーム</Link>
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/intake">チケット作成</Link>
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/inventory">在庫報告</Link>
+          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg白/20" to="/">ホーム</Link>
+          <Link className="px-3 py-1.5 rounded-full bg白/10 hover:bg白/20" to="/intake">チケット作成</Link>
+          <Link className="px-3 py-1.5 rounded-full bg白/10 hover:bg白/20" to="/inventory">在庫報告</Link>
         </div>
       </div>
     </div>
@@ -412,7 +405,7 @@ function Home({ onReloadMaster, masterLoading, masterError }: { onReloadMaster: 
 
         <div className="mt-6 p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
           <h2 className="font-semibold text-sky-900 mb-2">マスター再読込</h2>
-          <button onClick={onReloadMaster} className="px-4 py-2 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm disabled:opacity-50" disabled={masterLoading}>
+          <button onClick={onReloadMaster} className="px-4 py-2 rounded-full bg-sky-600 hover:bg-sky-700 text白 text-sm disabled:opacity-50" disabled={masterLoading}>
             {masterLoading ? "読込中..." : "マスターを再読込"}
           </button>
           {masterError && <p className="text-red-600 text-sm mt-2">{masterError}</p>}
@@ -712,15 +705,16 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
       const prefixPara = `寄生虫_${yyyymmdd(date)}_${person}`;
       const prefixForeign = `異物_${yyyymmdd(date)}_${person}`;
       const parasiteUrls = await uploadPhotos(parasitePhotos, prefixPara, DRIVE_FOLDER_ID_PHOTOS);
-      const foreignUrls = await uploadPhotos(foreignPhotos, prefixForeign, DRIVE_FOLDER_ID_PHOTOS);
+      const foreignUrls   = await uploadPhotos(foreignPhotos,   prefixForeign, DRIVE_FOLDER_ID_PHOTOS);
 
-      await recordToSheet("inventory", {
+      const recordPayload: InventoryRecordPayload = {
         ...payload,
         parasiteYN,
         parasiteFiles: parasiteUrls,
         foreignYN,
         foreignFiles: foreignUrls,
-      });
+      };
+      await recordToSheet("inventory", recordPayload);
 
       setPreviewOpen(true);
     } catch {
@@ -773,7 +767,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
             </div>
           </div>
 
-          {/* ▼ ここに移設: 目視確認（寄生虫・異物） */}
+          {/* 目視確認（寄生虫・異物） */}
           <div className="grid md:grid-cols-2 gap-4">
             <FileGroupYNMulti labelYN="目視確認 寄生虫" yn={parasiteYN} setYN={setParasiteYN} labelFile="寄生虫の写真（ありの場合1枚以上必須）" files={parasitePhotos} setFiles={setParasitePhotos} requiredWhenYes />
             <FileGroupYNMulti labelYN="目視確認 異物" yn={foreignYN} setYN={setForeignYN} labelFile="異物の写真（ありの場合1枚以上必須）" files={foreignPhotos} setFiles={setForeignPhotos} requiredWhenYes />
@@ -870,7 +864,7 @@ function FileGroupYNMulti({ labelYN, yn, setYN, labelFile, files, setFiles, requ
             capture="environment"
             multiple
             className="w-full border rounded-xl px-3 py-2 text-sm"
-            onChange={(e) => setFiles(Array.from(e.target.files || []))}
+            onChange={(e) => setFiles(Array.from((e.target as HTMLInputElement).files || []))}
           />
           {requiredWhenYes && files.length === 0 && (
             <p className="text-xs text-red-600 mt-1">ありの場合は写真が1枚以上必須です</p>
