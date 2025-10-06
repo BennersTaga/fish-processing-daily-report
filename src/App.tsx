@@ -197,18 +197,38 @@ async function recordToSheet(type: "intake" | "inventory", payload: any) {
   await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
 }
 
-/** 画像アップロード。GAS WebApp が返す JSON から Drive URL 配列を抽出して返す */
+/** 画像アップロード（Base64 送信 / no-cors 応答は読まない） */
 async function uploadPhotos(files: File[], prefix: string, folderId?: string): Promise<string[]> {
   if (!API_URL || files.length === 0) return [];
+
+  // File → Base64（ヘッダ無し）へ変換
+  const toB64 = (f: File) =>
+    new Promise<{ name: string; type: string; b64: string }>((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => {
+        const dataUrl = String(fr.result || "");
+        const b64 = dataUrl.split(",")[1] || ""; // "data:image/jpeg;base64,...." の後半
+        resolve({ name: f.name, type: f.type || "application/octet-stream", b64 });
+      };
+      fr.onerror = reject;
+      fr.readAsDataURL(f);
+    });
+
+  const payloads = await Promise.all(files.map(toB64));
+
   const fd = new FormData();
-  fd.append("action", "upload");
+  fd.append("action", "uploadB64"); // ★ GAS 側の Base64 受け口
   fd.append("prefix", prefix);
   if (folderId) fd.append("folderId", folderId);
-  files.forEach((f, i) => fd.append(`file${i}`, f, f.name));
 
-  const res = await fetch(API_URL, { method: "POST", body: fd });
-  const json = await res.json().catch(() => null);
-  return json && Array.isArray(json.files) ? json.files.map((x: any) => String(x.url)) : [];
+  payloads.forEach((p, i) => {
+    fd.append(`file${i}_name`, p.name);
+    fd.append(`file${i}_type`, p.type);
+    fd.append(`file${i}_b64`,  p.b64);
+  });
+
+  await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
+  return []; // URLはGAS側ログ（シート）を見る運用のため空配列を返す
 }
 
 function useMasterOptions() {
