@@ -3,7 +3,9 @@ import { HashRouter as Router, Routes, Route, Link, useNavigate } from "react-ro
 
 /**
  * 魚日報デモ（加工する魚原材料 / 魚原料在庫報告書）— デザイン刷新版（バグ修正＋UI強化）
- * - 正規表現修正: CSV分割を `text.split(/\r?\n/)` に統一
+ * - 正規表現修正: CSV分割を `text.split(/
+?
+/)` に統一
  * - ホーム画面: 月切替＋表形式、右上「仕入れを報告する」モーダル、行ごとの「在庫報告をする」
  * - Intake: 「目視確認 有毒魚」と「気づいたこと（有毒魚）」を同一ボックスに統合
  * - Inventory: 「加工状態（単一選択）」に変更、産地（業者）を選択式に変更
@@ -12,8 +14,9 @@ import { HashRouter as Router, Routes, Route, Link, useNavigate } from "react-ro
  * - 寄生虫/異物=あり のときはカメラ起動可・複数画像添付可（プレビュー付き）
  */
 
-const MASTER_CSV_URL = import.meta.env.VITE_MASTER_CSV_URL || "";
-const API_URL = import.meta.env.VITE_GAS_URL || "";
+// ★ 環境変数から読込（存在しない場合は空文字でフォールバック）
+const MASTER_CSV_URL = import.meta.env.VITE_MASTER_CSV_URL || ""; // 例: https://docs.google.com/spreadsheets/d/<ID>/gviz/tq?tqx=out:csv&sheet=リスト
+const API_URL = import.meta.env.VITE_GAS_URL || "";               // 例: GAS WebApp /exec
 const DRIVE_FOLDER_ID_PHOTOS = "1h3RCYDQrsNuBObQwKXsYM-HYtk8kE5R5";
 
 type MasterKey =
@@ -38,7 +41,9 @@ const fallbackMaster: Record<MasterKey, string[]> = {
 /** CSV文字列→ {id: 選択肢[]} へ変換（1行目=名称, 2行目=ID, 3行目以降=選択肢） */
 function parseMasterCsv(text: string): Partial<Record<MasterKey, string[]>> {
   const rows = text
-    .split(/\r?\n/)
+    .split(/
+?
+/)
     .map((r) => r.split(",").map((c) => c.trim()))
     .filter((r) => r.length > 0);
   const colCount = rows[0]?.length ?? 0;
@@ -65,7 +70,7 @@ async function fetchMasterFromCsv(url: string): Promise<Record<MasterKey, string
   return { ...fallbackMaster, ...(parsed as Record<MasterKey, string[]>) };
 }
 
-// ---- Dev用の超軽量テスト ----
+// ---- Dev用の超軽量テスト（任意）----
 function arraysEqual(a: any[], b: any[]) {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
@@ -73,19 +78,34 @@ function runParserTests() {
   try {
     // ベーシックケース（LF）
     const sample = [
-      "工場,担当者,魚種,仕入れ先,管理者,オゾン水担当者,産地（業者）",
-      "factory,person,species,supplier,admin,ozone_person,origin",
-      "A工場,佐藤,サバ,〇〇水産,管理者A,佐藤,北海道（〇〇水産）",
-      "B工場,鈴木,アジ,△△商店,管理者B,鈴木,宮城県（△△商店）",
-    ].join("\n");
+      "工場,担当者,魚種,産地（業者）",
+      "factory,person,species,origin",
+      "A工場,佐藤,サバ,北海道（〇〇水産）",
+      "B工場,鈴木,アジ,宮城県（△△商店）",
+    ].join("
+");
     const out = parseMasterCsv(sample);
     const t1 = arraysEqual(out.factory || [], ["A工場", "B工場"]);
     const t2 = arraysEqual(out.person || [], ["佐藤", "鈴木"]);
     const t3 = arraysEqual(out.species || [], ["サバ", "アジ"]);
-    const t4 = arraysEqual(out.supplier || [], ["〇〇水産", "△△商店"]);
-    const t5 = arraysEqual(out.admin || [], ["管理者A", "管理者B"]);
-    const t6 = arraysEqual(out.ozone_person || [], ["佐藤", "鈴木"]);
-    const t7 = arraysEqual(out.origin || [], ["北海道（〇〇水産）", "宮城県（△△商店）"]);
+    const t4 = arraysEqual(out.origin || [], ["北海道（〇〇水産）", "宮城県（△△商店）"]);
+
+    // 追加: 全列（supplier, admin, ozone_person を含む）
+    const sampleAll = [
+      "工場,担当者,魚種,仕入れ先,管理者チェック,オゾン水 担当者,産地（業者）",
+      "factory,person,species,supplier,admin,ozone_person,origin",
+      "第一工場,佐藤,サバ,〇〇水産,管理者A,佐藤,北海道（〇〇水産）",
+      "第二工場,鈴木,アジ,△△商店,管理者B,鈴木,宮城県（△△商店）",
+    ].join("
+");
+    const outAll = parseMasterCsv(sampleAll);
+    const tAll1 = arraysEqual(outAll.factory || [], ["第一工場", "第二工場"]);
+    const tAll2 = arraysEqual(outAll.person || [], ["佐藤", "鈴木"]);
+    const tAll3 = arraysEqual(outAll.species || [], ["サバ", "アジ"]);
+    const tAll4 = arraysEqual(outAll.supplier || [], ["〇〇水産", "△△商店"]);
+    const tAll5 = arraysEqual(outAll.admin || [], ["管理者A", "管理者B"]);
+    const tAll6 = arraysEqual(outAll.ozone_person || [], ["佐藤", "鈴木"]);
+    const tAll7 = arraysEqual(outAll.origin || [], ["北海道（〇〇水産）", "宮城県（△△商店）"]);
 
     // CRLF + 末尾空行
     const sampleCRLF = [
@@ -94,12 +114,13 @@ function runParserTests() {
       "A工場,佐藤",
       "B工場,鈴木",
       "",
-    ].join("\r\n");
+    ].join("
+");
     const outCRLF = parseMasterCsv(sampleCRLF);
-    const t8 = arraysEqual(outCRLF.factory || [], ["A工場", "B工場"]);
-    const t9 = arraysEqual(outCRLF.person || [], ["佐藤", "鈴木"]);
+    const t5 = arraysEqual(outCRLF.factory || [], ["A工場", "B工場"]);
+    const t6 = arraysEqual(outCRLF.person || [], ["佐藤", "鈴木"]);
 
-    // 追加テスト: 先頭/中間/末尾に空行が混在
+    // 先頭/中間/末尾に空行が混在
     const sampleWithBlanks = [
       "",
       "工場,担当者,魚種",
@@ -108,49 +129,28 @@ function runParserTests() {
       "A工場,佐藤,サバ",
       "B工場,鈴木,アジ",
       "",
-    ].join("\n");
+    ].join("
+");
     const outBlank = parseMasterCsv(sampleWithBlanks);
-    const t10 = arraysEqual(outBlank.factory || [], ["A工場", "B工場"]);
-    const t11 = arraysEqual(outBlank.species || [], ["サバ", "アジ"]);
+    const t7 = arraysEqual(outBlank.factory || [], ["A工場", "B工場"]);
+    const t8 = arraysEqual(outBlank.species || [], ["サバ", "アジ"]);
 
-    // 追加テスト: 空文字（例外にならず空オブジェクトを返す想定）
+    // 空文字（例外にならず空オブジェクトを返す想定）
     const outEmpty = parseMasterCsv("");
-    const t12 = Object.keys(outEmpty).length === 0;
+    const t9 = Object.keys(outEmpty).length === 0;
 
-    // 追加テスト: 見出しのみ
-    const headersOnly = ["工場,担当者", "factory,person"].join("\n");
+    // 見出しのみ
+    const headersOnly = ["工場,担当者", "factory,person"].join("
+");
     const outHead = parseMasterCsv(headersOnly);
-    const t13 = Object.keys(outHead).length === 0;
+    const t10 = Object.keys(outHead).length === 0;
 
     const all =
-      t1 &&
-      t2 &&
-      t3 &&
-      t4 &&
-      t5 &&
-      t6 &&
-      t7 &&
-      t8 &&
-      t9 &&
-      t10 &&
-      t11 &&
-      t12 &&
-      t13;
+      t1 && t2 && t3 && t4 &&
+      tAll1 && tAll2 && tAll3 && tAll4 && tAll5 && tAll6 && tAll7 &&
+      t5 && t6 && t7 && t8 && t9 && t10;
     console.log("[TEST] parseMasterCsv:", {
-      t1,
-      t2,
-      t3,
-      t4,
-      t5,
-      t6,
-      t7,
-      t8,
-      t9,
-      t10,
-      t11,
-      t12,
-      t13,
-      all,
+      t1, t2, t3, t4, tAll1, tAll2, tAll3, tAll4, tAll5, tAll6, tAll7, t5, t6, t7, t8, t9, t10, all,
     });
   } catch (e) {
     console.error("[TEST] parseMasterCsv failed:", e);
@@ -163,7 +163,7 @@ const LS_KEYS = {
   MASTER: "fish-demo.master",
   SPECIES_SET: "fish-demo.speciesSet",
   INTAKE_SUBMISSIONS: "fish-demo.intakeSubmissions", // チケット
-  INVENTORY_REPORTS: "fish-demo.inventoryReports", // 消込
+  INVENTORY_REPORTS: "fish-demo.inventoryReports",   // 消込
 };
 
 type Ticket = {
@@ -195,6 +195,29 @@ type Report = {
   kg: number | null;
 };
 
+// ---- GAS integration helpers ----
+async function recordToSheet(type: "intake" | "inventory", payload: any) {
+  if (!API_URL) return; // ENV未設定なら何もしない
+  const fd = new FormData();
+  fd.append("action", "record");
+  fd.append("type", type);
+  fd.append("payload", JSON.stringify(payload));
+  // Apps Script のCORS制限回避（fire-and-forget）
+  await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
+}
+
+/** 画像アップロード。no-cors のためURLは返さず空配列を返す想定 */
+async function uploadPhotos(files: File[], prefix: string, folderId?: string): Promise<string[]> {
+  if (!API_URL || files.length === 0) return [];
+  const fd = new FormData();
+  fd.append("action", "upload");
+  fd.append("prefix", prefix);
+  if (folderId) fd.append("folderId", folderId);
+  files.forEach((f, i) => fd.append(`file${i}`, f, f.name));
+  await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
+  return []; // スプレッドシート側でログ確認
+}
+
 function useMasterOptions() {
   const [master, setMaster] = useState<Record<MasterKey, string[]>>(() => {
     try {
@@ -221,7 +244,7 @@ function useMasterOptions() {
     }
   };
 
-  // auto-load from CSV on mount when URL is present
+  // 初回マウント時、自動でCSV(リスト)から読込（URL がある場合）
   useEffect(() => {
     if (MASTER_CSV_URL) {
       reload();
@@ -275,30 +298,6 @@ function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2,8)}`
 function getQuery() {
   const q = new URLSearchParams(window.location.hash.split("?")[1] || "");
   return Object.fromEntries(q.entries());
-}
-
-// ---- GAS integration helpers ----
-async function recordToSheet(type: "intake" | "inventory", payload: any) {
-  if (!API_URL) return; // 未設定なら何もしない
-  const fd = new FormData();
-  fd.append("action", "record");
-  fd.append("type", type);
-  fd.append("payload", JSON.stringify(payload));
-  // Apps Script の CORS（プリフライト）を避けるため no-cors で投げっぱなし
-  await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
-}
-
-/** 画像アップロード。URL は取得しない想定（GAS 側で保存される）。*/
-async function uploadPhotos(files: File[], prefix: string, folderId?: string): Promise<string[]> {
-  if (!API_URL || files.length === 0) return [];
-  const fd = new FormData();
-  fd.append("action", "upload");
-  fd.append("prefix", prefix);
-  if (folderId) fd.append("folderId", folderId);
-  files.forEach((f, i) => fd.append(`file${i}`, f, f.name));
-  await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
-  // no-cors のため応答は読めない。スプレッドシート側で確認する運用。
-  return [];
 }
 
 function Badge({ children }: { children: React.ReactNode }) {
@@ -712,15 +711,13 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
 
       const prefixPara = `寄生虫_${yyyymmdd(date)}_${person}`;
       const prefixForeign = `異物_${yyyymmdd(date)}_${person}`;
-      await uploadPhotos(parasitePhotos, prefixPara, DRIVE_FOLDER_ID_PHOTOS);
-      await uploadPhotos(foreignPhotos, prefixForeign, DRIVE_FOLDER_ID_PHOTOS);
+      const parasiteUrls = await uploadPhotos(parasitePhotos, prefixPara, DRIVE_FOLDER_ID_PHOTOS);
+      const foreignUrls  = await uploadPhotos(foreignPhotos,  prefixForeign, DRIVE_FOLDER_ID_PHOTOS);
 
       await recordToSheet("inventory", {
         ...payload,
-        parasiteYN,
-        parasiteFiles: [],
-        foreignYN,
-        foreignFiles: [],
+        parasiteYN,  parasiteFiles: parasiteUrls,
+        foreignYN,   foreignFiles:  foreignUrls,
       });
 
       setPreviewOpen(true);
@@ -774,7 +771,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
             </div>
           </div>
 
-          {/* ▼ ここに移設: 目視確認（寄生虫・異物） */}
+          {/* ▼ 目視確認（寄生虫・異物） */}
           <div className="grid md:grid-cols-2 gap-4">
             <FileGroupYNMulti labelYN="目視確認 寄生虫" yn={parasiteYN} setYN={setParasiteYN} labelFile="寄生虫の写真（ありの場合1枚以上必須）" files={parasitePhotos} setFiles={setParasitePhotos} requiredWhenYes />
             <FileGroupYNMulti labelYN="目視確認 異物" yn={foreignYN} setYN={setForeignYN} labelFile="異物の写真（ありの場合1枚以上必須）" files={foreignPhotos} setFiles={setForeignPhotos} requiredWhenYes />
