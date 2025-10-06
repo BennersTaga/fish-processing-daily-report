@@ -197,7 +197,7 @@ async function recordToSheet(type: "intake" | "inventory", payload: any) {
   await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
 }
 
-/** 画像アップロード。no-cors のためURLは返さず空配列を返す想定 */
+/** 画像アップロード。GAS WebApp が返す JSON から Drive URL 配列を抽出して返す */
 async function uploadPhotos(files: File[], prefix: string, folderId?: string): Promise<string[]> {
   if (!API_URL || files.length === 0) return [];
   const fd = new FormData();
@@ -205,8 +205,10 @@ async function uploadPhotos(files: File[], prefix: string, folderId?: string): P
   fd.append("prefix", prefix);
   if (folderId) fd.append("folderId", folderId);
   files.forEach((f, i) => fd.append(`file${i}`, f, f.name));
-  await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
-  return []; // スプレッドシート側でログ確認
+
+  const res = await fetch(API_URL, { method: "POST", body: fd });
+  const json = await res.json().catch(() => null);
+  return json && Array.isArray(json.files) ? json.files.map((x: any) => String(x.url)) : [];
 }
 
 function useMasterOptions() {
