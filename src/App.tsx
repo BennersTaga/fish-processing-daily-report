@@ -3,9 +3,7 @@ import { HashRouter as Router, Routes, Route, Link, useNavigate } from "react-ro
 
 /**
  * 魚日報デモ（加工する魚原材料 / 魚原料在庫報告書）— デザイン刷新版（バグ修正＋UI強化）
- * - 正規表現修正: CSV分割を `text.split(/
-?
-/)` に統一
+ * - 正規表現修正: CSV分割を `text.split(/\r?\n/)` に統一
  * - ホーム画面: 月切替＋表形式、右上「仕入れを報告する」モーダル、行ごとの「在庫報告をする」
  * - Intake: 「目視確認 有毒魚」と「気づいたこと（有毒魚）」を同一ボックスに統合
  * - Inventory: 「加工状態（単一選択）」に変更、産地（業者）を選択式に変更
@@ -41,9 +39,7 @@ const fallbackMaster: Record<MasterKey, string[]> = {
 /** CSV文字列→ {id: 選択肢[]} へ変換（1行目=名称, 2行目=ID, 3行目以降=選択肢） */
 function parseMasterCsv(text: string): Partial<Record<MasterKey, string[]>> {
   const rows = text
-    .split(/
-?
-/)
+    .split(/\r?\n/)
     .map((r) => r.split(",").map((c) => c.trim()))
     .filter((r) => r.length > 0);
   const colCount = rows[0]?.length ?? 0;
@@ -82,8 +78,7 @@ function runParserTests() {
       "factory,person,species,origin",
       "A工場,佐藤,サバ,北海道（〇〇水産）",
       "B工場,鈴木,アジ,宮城県（△△商店）",
-    ].join("
-");
+    ].join("\n");
     const out = parseMasterCsv(sample);
     const t1 = arraysEqual(out.factory || [], ["A工場", "B工場"]);
     const t2 = arraysEqual(out.person || [], ["佐藤", "鈴木"]);
@@ -96,8 +91,7 @@ function runParserTests() {
       "factory,person,species,supplier,admin,ozone_person,origin",
       "第一工場,佐藤,サバ,〇〇水産,管理者A,佐藤,北海道（〇〇水産）",
       "第二工場,鈴木,アジ,△△商店,管理者B,鈴木,宮城県（△△商店）",
-    ].join("
-");
+    ].join("\n");
     const outAll = parseMasterCsv(sampleAll);
     const tAll1 = arraysEqual(outAll.factory || [], ["第一工場", "第二工場"]);
     const tAll2 = arraysEqual(outAll.person || [], ["佐藤", "鈴木"]);
@@ -114,8 +108,7 @@ function runParserTests() {
       "A工場,佐藤",
       "B工場,鈴木",
       "",
-    ].join("
-");
+    ].join("\r\n");
     const outCRLF = parseMasterCsv(sampleCRLF);
     const t5 = arraysEqual(outCRLF.factory || [], ["A工場", "B工場"]);
     const t6 = arraysEqual(outCRLF.person || [], ["佐藤", "鈴木"]);
@@ -129,8 +122,7 @@ function runParserTests() {
       "A工場,佐藤,サバ",
       "B工場,鈴木,アジ",
       "",
-    ].join("
-");
+    ].join("\n");
     const outBlank = parseMasterCsv(sampleWithBlanks);
     const t7 = arraysEqual(outBlank.factory || [], ["A工場", "B工場"]);
     const t8 = arraysEqual(outBlank.species || [], ["サバ", "アジ"]);
@@ -140,8 +132,7 @@ function runParserTests() {
     const t9 = Object.keys(outEmpty).length === 0;
 
     // 見出しのみ
-    const headersOnly = ["工場,担当者", "factory,person"].join("
-");
+    const headersOnly = ["工場,担当者", "factory,person"].join("\n");
     const outHead = parseMasterCsv(headersOnly);
     const t10 = Object.keys(outHead).length === 0;
 
@@ -206,16 +197,38 @@ async function recordToSheet(type: "intake" | "inventory", payload: any) {
   await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
 }
 
-/** 画像アップロード。no-cors のためURLは返さず空配列を返す想定 */
+/** 画像アップロード（Base64 送信 / no-cors 応答は読まない） */
 async function uploadPhotos(files: File[], prefix: string, folderId?: string): Promise<string[]> {
   if (!API_URL || files.length === 0) return [];
+
+  // File → Base64（ヘッダ無し）へ変換
+  const toB64 = (f: File) =>
+    new Promise<{ name: string; type: string; b64: string }>((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => {
+        const dataUrl = String(fr.result || "");
+        const b64 = dataUrl.split(",")[1] || ""; // "data:image/jpeg;base64,...." の後半
+        resolve({ name: f.name, type: f.type || "application/octet-stream", b64 });
+      };
+      fr.onerror = reject;
+      fr.readAsDataURL(f);
+    });
+
+  const payloads = await Promise.all(files.map(toB64));
+
   const fd = new FormData();
-  fd.append("action", "upload");
+  fd.append("action", "uploadB64"); // ★ GAS 側の Base64 受け口
   fd.append("prefix", prefix);
   if (folderId) fd.append("folderId", folderId);
-  files.forEach((f, i) => fd.append(`file${i}`, f, f.name));
+
+  payloads.forEach((p, i) => {
+    fd.append(`file${i}_name`, p.name);
+    fd.append(`file${i}_type`, p.type);
+    fd.append(`file${i}_b64`, p.b64);
+  });
+
   await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
-  return []; // スプレッドシート側でログ確認
+  return []; // URLはGAS側ログ（シート）を見る運用のため空配列を返す
 }
 
 function useMasterOptions() {
