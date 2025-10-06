@@ -224,7 +224,7 @@ async function uploadPhotos(files: File[], prefix: string, folderId?: string): P
   payloads.forEach((p, i) => {
     fd.append(`file${i}_name`, p.name);
     fd.append(`file${i}_type`, p.type);
-    fd.append(`file${i}_b64`, p.b64);
+    fd.append(`file${i}_b64`,  p.b64);
   });
 
   await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
