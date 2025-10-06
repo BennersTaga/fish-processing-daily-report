@@ -10,7 +10,7 @@ Google Sheets / Google Drive と連携する日報入力ツールです。仕入
    npm install
    ```
 
-2. `.env` を作成し、Google Apps Script で発行した Web アプリ URL を含めて設定します。
+2. `.env` を作成し、Google Apps Script で発行した Web アプリ URL などを設定します。
 
    ```bash
    cp .env.example .env
@@ -19,11 +19,8 @@ Google Sheets / Google Drive と連携する日報入力ツールです。仕入
 
    | 変数名 | 説明 |
    | ------ | ---- |
-   | `VITE_GAS_WEBAPP_URL` | Google Apps Script の Web アプリ URL |
-   | `VITE_SPREADSHEET_ID` | 対象スプレッドシート ID |
-   | `VITE_SHEET_LIST` | マスター候補を保持するシート名 |
-   | `VITE_SHEET_ACTION` | 報告結果を書き込むシート名 |
-   | `VITE_DRIVE_FOLDER_ID_PHOTOS` | 画像保存先 Google Drive フォルダ ID |
+   | `VITE_MASTER_CSV_URL` | Google スプレッドシートから公開した CSV の URL |
+   | `VITE_GAS_URL` | Google Apps Script の Web アプリ（/exec）URL |
 
 3. 開発サーバーを起動します。
 
@@ -31,9 +28,13 @@ Google Sheets / Google Drive と連携する日報入力ツールです。仕入
    npm run dev
    ```
 
-## Google Apps Script
+## GAS setup
 
-`/docs` ディレクトリに GAS デプロイスクリプト例を格納してください（本リポジトリでは README に記載のコードを利用します）。Apps Script は匿名アクセスを許可して Web アプリとして公開してください。
+1. Google スプレッドシートでマスター候補（工場・担当者など）を管理し、「ウェブに公開」→ CSV 形式で公開した URL を `VITE_MASTER_CSV_URL` に設定します。
+2. Google Apps Script で Web アプリを作成し、日報データの保存と Drive へのファイル保存処理を実装します。
+3. 「デプロイ > 新しいデプロイ」で Web アプリとして公開し、アクセス権限を「全員」に設定します。
+4. 発行された Web アプリの `/exec` URL を `VITE_GAS_URL` に設定します。
+5. Apps Script 側では `action=upload` と `action=record` を受け取り、JSON で `files: [{ url: "https://..." }]` の形でレスポンスを返すようにしてください。
 
 ## デプロイ
 
