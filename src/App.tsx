@@ -338,9 +338,9 @@ function Header() {
       <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="font-bold text-lg flex items-center gap-2">🐟 魚日報デモ</div>
         <div className="hidden md:flex gap-2 text-xs">
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/">ホーム</Link>
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/intake">チケット作成</Link>
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/inventory">在庫報告</Link>
+          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg白/20" to="/">ホーム</Link>
+          <Link className="px-3 py-1.5 rounded-full bg白/10 hover:bg白/20" to="/intake">チケット作成</Link>
+          <Link className="px-3 py-1.5 rounded-full bg白/10 hover:bg白/20" to="/inventory">在庫報告</Link>
         </div>
       </div>
     </div>
@@ -510,8 +510,8 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
           </div>
           {err && <p className="text-red-600 text-sm">{err}</p>}
           <div className="flex gap-2">
-            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">登録</button>
-            <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">キャンセル</button>
+            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text白 text-sm shadow">登録</button>
+            <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-full bg白 ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">キャンセル</button>
           </div>
         </form>
       </div>
@@ -581,9 +581,9 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
   };
 
   return (
-    <div className="min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to-white">
+    <div className="min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to白">
       <div className="max-w-5xl mx-auto p-4">
-        <div className="mb-4 p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm flex items-center justify-between">
+        <div className="mb-4 p-4 rounded-3xl bg白 ring-1 ring-sky-100 shadow-sm flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-sky-900">チケット作成（加工する魚原材料）</h1>
             <p className="text-slate-600 text-sm">魚種ごとの作業をチケットとして起票します。</p>
@@ -611,8 +611,8 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
           {err && <p className="text-red-600 text-sm">{err}</p>}
 
           <div className="flex gap-3">
-            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">登録</button>
-            <Link to="/" className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">ホームへ</Link>
+            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text白 text-sm shadow">登録</button>
+            <Link to="/" className="px-5 py-2.5 rounded-full bg白 ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">ホームへ</Link>
           </div>
         </form>
 
@@ -633,7 +633,7 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
 
 function ToxicBox({ valueYN, setYN, note, setNote }: { valueYN: "あり" | "なし"; setYN: (v: "あり" | "なし") => void; note: string; setNote: (v: string) => void; }) {
   return (
-    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+    <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100">
       <label className="block text-sm font-medium mb-1 text-slate-700">目視確認 有毒魚</label>
       <div className="flex items-center gap-6 text-sm mb-2">
         <label className="flex items-center gap-2"><input type="radio" checked={valueYN === "あり"} onChange={() => setYN("あり")} />あり</label>
@@ -655,7 +655,7 @@ function TicketListPreview() {
   }, []);
   if (!items.length) return null;
   return (
-    <div className="mt-6 p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm">
+    <div className="mt-6 p-4 rounded-3xl bg白 ring-1 ring-sky-100 shadow-sm">
       <h2 className="font-semibold text-sky-900 mb-3">最近作成したチケット</h2>
       <ul className="space-y-2 text-sm">
         {items.map((x: Ticket, i: number) => (
@@ -769,17 +769,17 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
   };
 
   return (
-    <div className="min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to-white">
+    <div className="min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to白">
       <div className="max-w-5xl mx-auto p-4">
-        <div className="mb-4 p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm flex items-center justify-between">
+        <div className="mb-4 p-4 rounded-3xl bg白 ring-1 ring-sky-100 shadow-sm flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-sky-900">魚原料在庫報告書</h1>
-            <p className="text-slate-600 text-sm">作成済みのチケットから対象魚種を選び、在庫実績を記録します。</p>
+            <p className="text-slate-600 text-sm">作成済みのチケットから対象魚種を記録します。</p>
           </div>
           <Badge>✅ Reconcile</Badge>
         </div>
 
-        <div className="p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm mb-4">
+        <div className="p-4 rounded-3xl bg白 ring-1 ring-sky-100 shadow-sm mb-4">
           {fixedSpecies ? (
             <div className="text-sm text-slate-700 flex items-center gap-2">
               <span>対象の魚種:</span>
@@ -794,7 +794,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
                     key={s}
                     onClick={() => setSpecies(s)}
                     type="button"
-                    className={`px-3 py-1.5 rounded-full text-sm ring-1 transition ${species === s ? "bg-sky-600 text-white ring-sky-600" : "bg-sky-50 text-sky-700 ring-sky-200 hover:ring-sky-300"}`}
+                    className={`px-3 py-1.5 rounded-full text-sm ring-1 transition ${species === s ? "bg-sky-600 text白 ring-sky-600" : "bg-sky-50 text-sky-700 ring-sky-200 hover:ring-sky-300"}`}
                   >
                     {s}
                   </button>
@@ -819,7 +819,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
             )}
             <Select label="産地（業者）" value={origin} onChange={setOrigin} options={master.origin} />
           </div>
-          <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+          <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100">
             <label className="block font-medium mb-2">加工状態（該当するものを選択）</label>
             <div className="grid md:grid-cols-3 gap-2 text-sm">
               {["ラウンド", "頭落とし（腹出）", "三枚卸し", "切り身", "柵", "刺身"].map((label) => (
@@ -840,8 +840,8 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
           {err && <p className="text-red-600 text-sm">{err}</p>}
           <NumberInput label="kg数（小数1位まで）" value={kg} onChange={setKg} step={0.1} min={0} />
           <div className="flex gap-3">
-            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">在庫報告を登録</button>
-            <Link to="/" className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">ホームへ</Link>
+            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text白 text-sm shadow">在庫報告を登録</button>
+            <Link to="/" className="px-5 py-2.5 rounded-full bg白 ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">ホームへ</Link>
           </div>
         </form>
       </div>
@@ -861,7 +861,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
 // ------------------------ 汎用UI ------------------------
 function Select({ label, value, onChange, options, disabled }: { label: string; value: string; onChange: (v: string) => void; options: string[]; disabled?: boolean; }) {
   return (
-    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+    <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100">
       <label className="block text-sm font-medium mb-1 text-slate-700">{label}</label>
       <select
         className="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 disabled:opacity-50 disabled:bg-slate-50"
@@ -878,7 +878,7 @@ function Select({ label, value, onChange, options, disabled }: { label: string; 
 }
 function DateInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void; }) {
   return (
-    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+    <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100">
       <label className="block text-sm font-medium mb-1 text-slate-700">{label}</label>
       <input type="date" className="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" value={value} onChange={(e) => onChange(e.target.value)} />
     </div>
@@ -886,7 +886,7 @@ function DateInput({ label, value, onChange }: { label: string; value: string; o
 }
 function TextInput({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; }) {
   return (
-    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+    <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100">
       <label className="block text-sm font-medium mb-1 text-slate-700">{label}</label>
       <input type="text" className="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
     </div>
@@ -894,7 +894,7 @@ function TextInput({ label, value, onChange, placeholder }: { label: string; val
 }
 function NumberInput({ label, value, onChange, step, min }: { label: string; value: string; onChange: (v: string) => void; step?: number; min?: number; }) {
   return (
-    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+    <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100">
       <label className="block text-sm font-medium mb-1 text-slate-700">{label}</label>
       <input type="number" className="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" value={value} onChange={(e) => onChange(e.target.value)} step={step} min={min} />
     </div>
@@ -902,7 +902,7 @@ function NumberInput({ label, value, onChange, step, min }: { label: string; val
 }
 function ReadOnly({ label, value }: { label: string; value: React.ReactNode; }) {
   return (
-    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+    <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100">
       <label className="block text-sm font-medium mb-1 text-slate-700">{label}</label>
       <div className="text-sm text-slate-900">{value}</div>
     </div>
@@ -910,7 +910,7 @@ function ReadOnly({ label, value }: { label: string; value: React.ReactNode; }) 
 }
 function RadioYN({ label, value, onChange }: { label: string; value: "あり" | "なし"; onChange: (v: "あり" | "なし") => void; }) {
   return (
-    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+    <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100">
       <label className="block text-sm font-medium mb-1 text-slate-700">{label}</label>
       <div className="flex items-center gap-6 text-sm">
         <label className="flex items-center gap-2">
@@ -925,7 +925,7 @@ function RadioYN({ label, value, onChange }: { label: string; value: "あり" | 
 }
 function FileGroupYNMulti({ labelYN, yn, setYN, labelFile, files, setFiles, requiredWhenYes }: { labelYN: string; yn: "あり" | "なし"; setYN: (v: "あり" | "なし") => void; labelFile: string; files: File[]; setFiles: (f: File[]) => void; requiredWhenYes?: boolean; }) {
   return (
-    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100 grid gap-3">
+    <div className="p-4 rounded-3xl bg白 shadow-sm ring-1 ring-sky-100 grid gap-3">
       <RadioYN label={labelYN} value={yn} onChange={setYN} />
       {yn === "あり" && (
         <div>
@@ -956,8 +956,8 @@ function FileGroupYNMulti({ labelYN, yn, setYN, labelFile, files, setFiles, requ
 
 function PhotosPreviewModal({ title, parasite, foreign, onClose }: { title: string; parasite: File[]; foreign: File[]; onClose: () => void; }) {
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-3xl p-6 w-[min(720px,95vw)] max-h-[90vh] overflow-auto ring-1 ring-sky-100 shadow-xl">
+    <div className="固定 inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="bg白 rounded-3xl p-6 w-[min(720px,95vw)] max-h-[90vh] overflow-auto ring-1 ring-sky-100 shadow-xl">
         <h3 className="text-lg font-semibold text-sky-900 mb-3">{title}</h3>
         <div className="grid md:grid-cols-2 gap-6">
           <div>
@@ -978,7 +978,7 @@ function PhotosPreviewModal({ title, parasite, foreign, onClose }: { title: stri
           </div>
         </div>
         <div className="mt-4 text-right">
-          <button onClick={onClose} className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">OK</button>
+          <button onClick={onClose} className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text白 text-sm shadow">OK</button>
         </div>
       </div>
     </div>
