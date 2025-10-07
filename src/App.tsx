@@ -184,6 +184,8 @@ type Report = {
   origin: string;
   state: string; // 単一選択
   kg: number | null;
+  depletion: "使い切った" | "次の日に残した";
+  leftoverKg: number | null;
 };
 
 // ---- GAS integration helpers ----
@@ -688,6 +690,8 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
   const [origin, setOrigin] = useState(master.origin[0] || "");
   const [state, setState] = useState<string>("ラウンド"); // 単一選択
   const [kg, setKg] = useState<string>("");
+  const [depletion, setDepletion] = useState<"使い切った" | "次の日に残した">("使い切った");
+  const [leftoverKg, setLeftoverKg] = useState<string>("");
 
   // 目視確認（在庫報告に移動）
   const [parasiteYN, setParasiteYN] = useState<"あり" | "なし">("なし");
@@ -713,8 +717,21 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
     setErr(null);
     if (parasiteYN === "あり" && parasitePhotos.length === 0) { setErr("寄生虫=あり の場合は写真が1枚以上必須です"); return; }
     if (foreignYN === "あり" && foreignPhotos.length === 0) { setErr("異物=あり の場合は写真が1枚以上必須です"); return; }
+    if (depletion === "次の日に残した" && !leftoverKg) { setErr("翌日に残したkgを入力してください"); return; }
 
-    const payload: Report = { ticketId, factory, date, person, purchaseDate, species, origin, state, kg: kg ? Number(kg) : null };
+    const payload: Report = {
+      ticketId,
+      factory,
+      date,
+      person,
+      purchaseDate,
+      species,
+      origin,
+      state,
+      kg: kg ? Number(kg) : null,
+      depletion,
+      leftoverKg: depletion === "次の日に残した" ? (leftoverKg ? Number(leftoverKg) : null) : 0,
+    };
     try {
       const raw = localStorage.getItem(LS_KEYS.INVENTORY_REPORTS);
       const arr: Report[] = raw ? JSON.parse(raw) : [];
@@ -791,6 +808,39 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
           </div>
 
           {err && <p className="text-red-600 text-sm">{err}</p>}
+          <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+            <label className="block font-medium mb-2">在庫の結果</label>
+            <div className="flex items-center gap-6 text-sm mb-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  checked={depletion === "使い切った"}
+                  onChange={() => { setDepletion("使い切った"); setLeftoverKg(""); }}
+                />
+                使い切った
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  checked={depletion === "次の日に残した"}
+                  onChange={() => setDepletion("次の日に残した")}
+                />
+                次の日に残した
+              </label>
+            </div>
+
+            {depletion === "次の日に残した" && (
+              <div className="mt-2">
+                <NumberInput
+                  label="翌日に残したkg（小数1位まで）"
+                  value={leftoverKg}
+                  onChange={setLeftoverKg}
+                  step={0.1}
+                  min={0}
+                />
+              </div>
+            )}
+          </div>
           <NumberInput label="kg数（小数1位まで）" value={kg} onChange={setKg} step={0.1} min={0} />
           <div className="flex gap-3">
             <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">在庫報告を登録</button>
