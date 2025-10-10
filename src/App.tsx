@@ -9,6 +9,7 @@ import { HashRouter as Router, Routes, Route, Link, useNavigate } from "react-ro
  * - Inventory: 加工状態=単一選択、産地（業者）=選択式
  * - 在庫報告: 「使い切った / 次の日に残した」＋残量kg
  * - 仕入れモーダルの「年月日」→「仕入れの年月日」
+ * - 二重送信/多重遷移の防止（押下後は完了までdisabled）
  */
 
 const MASTER_CSV_URL = import.meta.env.VITE_MASTER_CSV_URL || "";
@@ -288,6 +289,8 @@ function Home({ onReloadMaster, masterLoading, masterError }: { onReloadMaster: 
   const [showModal, setShowModal] = useState(false);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
+  const [navigatingTid, setNavigatingTid] = useState<string | null>(null);
+  const nav = useNavigate();
 
   useEffect(() => {
     try {
@@ -307,6 +310,12 @@ function Home({ onReloadMaster, masterLoading, masterError }: { onReloadMaster: 
   const filtered = useMemo(() => {
     return tickets.filter((t) => (t.purchaseDate || t.date).startsWith(m));
   }, [tickets, m]);
+
+  const goInventory = (t: Ticket) => {
+    if (navigatingTid) return;
+    setNavigatingTid(t.ticketId);
+    nav(`/inventory?tid=${encodeURIComponent(t.ticketId)}&species=${encodeURIComponent(t.species)}`);
+  };
 
   return (
     <div className="min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to-white">
@@ -347,7 +356,18 @@ function Home({ onReloadMaster, masterLoading, masterError }: { onReloadMaster: 
                       {done ? (
                         <span className="text-slate-400">報告完了</span>
                       ) : (
-                        <Link className="px-3 py-1.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white" to={`/inventory?tid=${encodeURIComponent(t.ticketId)}&species=${encodeURIComponent(t.species)}`}>在庫報告をする</Link>
+                        <button
+                          type="button"
+                          onClick={() => goInventory(t)}
+                          disabled={navigatingTid === t.ticketId || done}
+                          className={`px-3 py-1.5 rounded-full text-white shadow transition ${
+                            (navigatingTid === t.ticketId || done)
+                              ? "bg-slate-300 cursor-not-allowed opacity-50 pointer-events-none"
+                              : "bg-sky-600 hover:bg-sky-700"
+                          }`}
+                        >
+                          在庫報告をする
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -394,6 +414,7 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
   const [toxFish, setToxFish] = useState<"あり" | "なし">("なし");
   const [toxNote, setToxNote] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (ozone === "なし") setOzonePerson("なし");
@@ -405,7 +426,9 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErr(null);
+    setIsSubmitting(true);
 
     const ticket: Ticket = {
       ticketId: uid(), factory, date: todayStr(), purchaseDate: date, person, species, supplier,
@@ -424,6 +447,7 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
       onClose();
     } catch {
       setErr("保存に失敗しました");
+      setIsSubmitting(false);
     }
   };
 
@@ -432,7 +456,7 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
       <div className={INTAKE_MODAL_CARD_CLASS}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold text-sky-900">仕入れを報告する</h3>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-700">閉じる</button>
+          <button onClick={onClose} disabled={isSubmitting} className="text-slate-500 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">閉じる</button>
         </div>
         <form onSubmit={submit} className="grid gap-4">
           <div className="grid md:grid-cols-3 gap-4">
@@ -452,8 +476,8 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
           </div>
           {err && <p className="text-red-600 text-sm">{err}</p>}
           <div className="flex gap-2">
-            <button className={INTAKE_MODAL_SUBMIT_CLASS}>登録</button>
-            <button type="button" onClick={onClose} className={INTAKE_MODAL_CANCEL_CLASS}>キャンセル</button>
+            <button disabled={isSubmitting} className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">登録</button>
+            <button type="button" onClick={onClose} disabled={isSubmitting} className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">キャンセル</button>
           </div>
         </form>
       </div>
@@ -476,6 +500,7 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
   const [admin, setAdmin] = useState(master.admin[0] || "");
   const [err, setErr] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const nav = useNavigate();
 
   useEffect(() => {
@@ -497,7 +522,9 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErr(null);
+    setIsSubmitting(true);
 
     const payload: Ticket = {
       ticketId: uid(),
@@ -516,8 +543,11 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
       localStorage.setItem(LS_KEYS.INTAKE_SUBMISSIONS, JSON.stringify(arr));
       await recordToSheet("intake", payload);
       setPreviewOpen(true);
-    } catch {}
-    onSubmitted(payload);
+      onSubmitted(payload);
+    } catch {
+      setErr("保存に失敗しました");
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -551,7 +581,12 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
           {err && <p className="text-red-600 text-sm">{err}</p>}
 
           <div className="flex gap-3">
-            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">登録</button>
+            <button
+              disabled={isSubmitting}
+              className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            >
+              登録
+            </button>
             <Link to="/" className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">ホームへ</Link>
           </div>
         </form>
@@ -563,7 +598,11 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
             title="プレビュー"
             parasite={[]}
             foreign={[]}
-            onClose={() => { setPreviewOpen(false); nav("/"); }}
+            onClose={() => {
+              setPreviewOpen(false);
+              setIsSubmitting(false);
+              nav("/");
+            }}
           />
         )}
       </div>
@@ -637,6 +676,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
   const [foreignPhotos, setForeignPhotos] = useState<File[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const speciesOptions = useMemo(() => {
     const base = speciesSet.length ? speciesSet : master.species;
@@ -682,10 +722,25 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErr(null);
-    if (parasiteYN === "あり" && parasitePhotos.length === 0) { setErr("寄生虫=あり の場合は写真が1枚以上必須です"); return; }
-    if (foreignYN === "あり" && foreignPhotos.length === 0) { setErr("異物=あり の場合は写真が1枚以上必須です"); return; }
-    if (depletion === "次の日に残した" && !leftoverKg) { setErr("翌日に残したkgを入力してください"); return; }
+    setIsSubmitting(true);
+
+    if (parasiteYN === "あり" && parasitePhotos.length === 0) {
+      setErr("寄生虫=あり の場合は写真が1枚以上必須です");
+      setIsSubmitting(false);
+      return;
+    }
+    if (foreignYN === "あり" && foreignPhotos.length === 0) {
+      setErr("異物=あり の場合は写真が1枚以上必須です");
+      setIsSubmitting(false);
+      return;
+    }
+    if (depletion === "次の日に残した" && !leftoverKg) {
+      setErr("翌日に残したkgを入力してください");
+      setIsSubmitting(false);
+      return;
+    }
 
     const speciesForSubmit = fixedSpecies ?? species;
 
@@ -729,6 +784,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
       setPreviewOpen(true);
     } catch {
       setErr("保存に失敗しました");
+      setIsSubmitting(false);
     }
   };
 
@@ -825,7 +881,12 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
           </div>
           {/* kg入力欄は廃止（翌日残量をkgとして送信） */}
           <div className="flex gap-3">
-            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">在庫報告を登録</button>
+            <button
+              disabled={isSubmitting}
+              className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            >
+              在庫報告を登録
+            </button>
             <Link to="/" className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">ホームへ</Link>
           </div>
         </form>
@@ -836,7 +897,11 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
           title="添付写真のプレビュー"
           parasite={parasitePhotos}
           foreign={foreignPhotos}
-          onClose={() => { setPreviewOpen(false); nav("/"); }}
+          onClose={() => {
+            setPreviewOpen(false);
+            setIsSubmitting(false);
+            nav("/");
+          }}
         />
       )}
     </div>
@@ -943,6 +1008,12 @@ function FileGroupYNMulti({ labelYN, yn, setYN, labelFile, files, setFiles, requ
 }
 
 function PhotosPreviewModal({ title, parasite, foreign, onClose }: { title: string; parasite: File[]; foreign: File[]; onClose: () => void; }) {
+  const [closing, setClosing] = useState(false);
+  const handle = () => {
+    if (closing) return;
+    setClosing(true);
+    onClose();
+  };
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
       <div className="bg-white rounded-3xl p-6 w-[min(720px,95vw)] max-h-[90vh] overflow-auto ring-1 ring-sky-100 shadow-xl">
@@ -966,7 +1037,13 @@ function PhotosPreviewModal({ title, parasite, foreign, onClose }: { title: stri
           </div>
         </div>
         <div className="mt-4 text-right">
-          <button onClick={onClose} className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">OK</button>
+          <button
+            onClick={handle}
+            disabled={closing}
+            className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+          >
+            OK
+          </button>
         </div>
       </div>
     </div>
