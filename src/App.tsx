@@ -184,6 +184,8 @@ type Report = {
   origin: string;
   state: string; // 単一選択
   kg: number | null;
+  depletion: "使い切った" | "次の日に残した";
+  leftoverKg: number | null;
 };
 
 // ---- GAS integration helpers ----
@@ -197,35 +199,35 @@ async function recordToSheet(type: "intake" | "inventory", payload: any) {
   await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
 }
 
-/** 画像アップロード（Base64 送信 / no-cors 応答は読まない） */
+/** 画像アップロード（Base64 / no-cors 応答は読まない） */
 async function uploadPhotos(files: File[], prefix: string, folderId?: string): Promise<string[]> {
   if (!API_URL || files.length === 0) return [];
 
-  // File → Base64（ヘッダ無し）へ変換
-  const toB64 = (f: File) =>
-    new Promise<{ name: string; type: string; b64: string }>((resolve, reject) => {
+  // helper: File -> base64 (dataURL) -> strip prefix
+  const toB64 = (file: File) =>
+    new Promise<string>((resolve, reject) => {
       const fr = new FileReader();
       fr.onload = () => {
-        const dataUrl = String(fr.result || "");
-        const b64 = dataUrl.split(",")[1] || ""; // "data:image/jpeg;base64,...." の後半
-        resolve({ name: f.name, type: f.type || "application/octet-stream", b64 });
+        const v = String(fr.result || "");
+        const comma = v.indexOf(",");
+        resolve(comma >= 0 ? v.slice(comma + 1) : v);
       };
       fr.onerror = reject;
-      fr.readAsDataURL(f);
+      fr.readAsDataURL(file);
     });
 
-  const payloads = await Promise.all(files.map(toB64));
-
   const fd = new FormData();
-  fd.append("action", "uploadB64"); // ★ GAS 側の Base64 受け口
+  fd.append("action", "uploadB64"); // ★ switch to Base64 route
   fd.append("prefix", prefix);
   if (folderId) fd.append("folderId", folderId);
 
-  payloads.forEach((p, i) => {
-    fd.append(`file${i}_name`, p.name);
-    fd.append(`file${i}_type`, p.type);
-    fd.append(`file${i}_b64`,  p.b64);
-  });
+  const max = Math.min(files.length, 10);
+  for (let i = 0; i < max; i++) {
+    const f = files[i];
+    fd.append(`file${i}_name`, f.name);
+    fd.append(`file${i}_type`, f.type || "application/octet-stream");
+    fd.append(`file${i}_b64`, await toB64(f));
+  }
 
   await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
   return []; // URLはGAS側ログ（シート）を見る運用のため空配列を返す
@@ -353,6 +355,8 @@ function Home({ onReloadMaster, masterLoading, masterError }: { onReloadMaster: 
   const [showModal, setShowModal] = useState(false);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
+  const [navigatingTid, setNavigatingTid] = useState<string | null>(null);
+  const nav = useNavigate();
 
   useEffect(() => {
     try {
@@ -372,6 +376,12 @@ function Home({ onReloadMaster, masterLoading, masterError }: { onReloadMaster: 
   const filtered = useMemo(() => {
     return tickets.filter((t) => (t.purchaseDate || t.date).startsWith(m));
   }, [tickets, m]);
+
+  const goInventory = (t: Ticket) => {
+    if (navigatingTid) return;
+    setNavigatingTid(t.ticketId);
+    nav(`/inventory?tid=${encodeURIComponent(t.ticketId)}&species=${encodeURIComponent(t.species)}`);
+  };
 
   return (
     <div className="min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to-white">
@@ -412,7 +422,18 @@ function Home({ onReloadMaster, masterLoading, masterError }: { onReloadMaster: 
                       {done ? (
                         <span className="text-slate-400">報告完了</span>
                       ) : (
-                        <Link className="px-3 py-1.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white" to={`/inventory?tid=${encodeURIComponent(t.ticketId)}&species=${encodeURIComponent(t.species)}`}>在庫報告をする</Link>
+                        <button
+                          type="button"
+                          onClick={() => goInventory(t)}
+                          disabled={navigatingTid === t.ticketId || done}
+                          className={`px-3 py-1.5 rounded-full text-white shadow transition ${
+                            (navigatingTid === t.ticketId || done)
+                              ? "bg-slate-300 cursor-not-allowed opacity-50 pointer-events-none"
+                              : "bg-sky-600 hover:bg-sky-700"
+                          }`}
+                        >
+                          在庫報告をする
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -450,6 +471,7 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
   const [toxFish, setToxFish] = useState<"あり" | "なし">("なし");
   const [toxNote, setToxNote] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // オゾン水 実施=なし のときは担当者を「なし」に固定、ありなら先頭候補へ
   useEffect(() => {
@@ -463,7 +485,9 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErr(null);
+    setIsSubmitting(true);
 
     const ticket: Ticket = {
       ticketId: uid(), factory, date: todayStr(), purchaseDate: date, person, species, supplier,
@@ -482,6 +506,7 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
       onClose();
     } catch {
       setErr("保存に失敗しました");
+      setIsSubmitting(false);
     }
   };
 
@@ -490,7 +515,7 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
       <div className="w-[min(960px,95vw)] max-h-[90vh] overflow-auto rounded-3xl bg-white p-6 ring-1 ring-sky-100 shadow-xl">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold text-sky-900">仕入れを報告する</h3>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-700">閉じる</button>
+          <button onClick={onClose} disabled={isSubmitting} className="text-slate-500 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">閉じる</button>
         </div>
         <form onSubmit={submit} className="grid gap-4">
           <div className="grid md:grid-cols-3 gap-4">
@@ -510,8 +535,8 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
           </div>
           {err && <p className="text-red-600 text-sm">{err}</p>}
           <div className="flex gap-2">
-            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">登録</button>
-            <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">キャンセル</button>
+            <button disabled={isSubmitting} className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">登録</button>
+            <button type="button" onClick={onClose} disabled={isSubmitting} className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">キャンセル</button>
           </div>
         </form>
       </div>
@@ -534,6 +559,7 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
   const [admin, setAdmin] = useState(master.admin[0] || "");
   const [err, setErr] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const nav = useNavigate();
 
   useEffect(() => {
@@ -557,7 +583,9 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErr(null);
+    setIsSubmitting(true);
 
     const payload: Ticket = {
       ticketId: uid(),
@@ -576,8 +604,11 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
       localStorage.setItem(LS_KEYS.INTAKE_SUBMISSIONS, JSON.stringify(arr));
       await recordToSheet("intake", payload);
       setPreviewOpen(true);
-    } catch {}
-    onSubmitted(payload);
+      onSubmitted(payload);
+    } catch {
+      setErr("保存に失敗しました");
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -611,7 +642,12 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
           {err && <p className="text-red-600 text-sm">{err}</p>}
 
           <div className="flex gap-3">
-            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">登録</button>
+            <button
+              disabled={isSubmitting}
+              className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            >
+              登録
+            </button>
             <Link to="/" className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">ホームへ</Link>
           </div>
         </form>
@@ -623,7 +659,11 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
             title="プレビュー"
             parasite={[]}
             foreign={[]}
-            onClose={() => { setPreviewOpen(false); nav("/"); }}
+            onClose={() => {
+              setPreviewOpen(false);
+              setIsSubmitting(false);
+              nav("/");
+            }}
           />
         )}
       </div>
@@ -685,9 +725,11 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
   const [person, setPerson] = useState(master.person[0] || "");
   const [purchaseDate, setPurchaseDate] = useState(todayStr());
   const [species, setSpecies] = useState("" as string);
+  const [fixedSpecies, setFixedSpecies] = useState<string | null>(null);
   const [origin, setOrigin] = useState(master.origin[0] || "");
   const [state, setState] = useState<string>("ラウンド"); // 単一選択
-  const [kg, setKg] = useState<string>("");
+  const [depletion, setDepletion] = useState<"使い切った" | "次の日に残した">("使い切った");
+  const [leftoverKg, setLeftoverKg] = useState<string>("");
 
   // 目視確認（在庫報告に移動）
   const [parasiteYN, setParasiteYN] = useState<"あり" | "なし">("なし");
@@ -696,6 +738,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
   const [foreignPhotos, setForeignPhotos] = useState<File[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const speciesOptions = useMemo(() => {
     const base = speciesSet.length ? speciesSet : master.species;
@@ -703,18 +746,83 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
   }, [speciesSet, master.species, qsSpecies]);
 
   useEffect(() => {
-    if (speciesOptions.length) setSpecies(speciesOptions[0]);
-    if (master.factory.length) setFactory(master.factory[0]);
-    if (master.person.length) setPerson(master.person[0]);
-  }, [speciesOptions, master]);
+    let resolved = "";
+    if (ticketId) {
+      try {
+        const raw = localStorage.getItem(LS_KEYS.INTAKE_SUBMISSIONS);
+        if (raw) {
+          const arr: Ticket[] = JSON.parse(raw);
+          const matched = arr.find((t) => t.ticketId === ticketId);
+          if (matched?.species) resolved = matched.species;
+        }
+      } catch {}
+    }
+    if (!resolved && qsSpecies) {
+      resolved = qsSpecies;
+    }
+    if (resolved) {
+      if (resolved !== fixedSpecies) {
+        setFixedSpecies(resolved);
+        setSpecies(resolved);
+      }
+    } else if (fixedSpecies) {
+      setFixedSpecies(null);
+      setSpecies("");
+    }
+  }, [ticketId, qsSpecies, fixedSpecies]);
+
+  useEffect(() => {
+    if (!fixedSpecies && !species && speciesOptions.length) {
+      setSpecies(speciesOptions[0]);
+    }
+  }, [speciesOptions, fixedSpecies, species]);
+
+  useEffect(() => {
+    if (master.factory.length) setFactory((prev) => prev || master.factory[0]);
+    if (master.person.length) setPerson((prev) => prev || master.person[0]);
+  }, [master]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErr(null);
-    if (parasiteYN === "あり" && parasitePhotos.length === 0) { setErr("寄生虫=あり の場合は写真が1枚以上必須です"); return; }
-    if (foreignYN === "あり" && foreignPhotos.length === 0) { setErr("異物=あり の場合は写真が1枚以上必須です"); return; }
+    setIsSubmitting(true);
+    if (parasiteYN === "あり" && parasitePhotos.length === 0) {
+      setErr("寄生虫=あり の場合は写真が1枚以上必須です");
+      setIsSubmitting(false);
+      return;
+    }
+    if (foreignYN === "あり" && foreignPhotos.length === 0) {
+      setErr("異物=あり の場合は写真が1枚以上必須です");
+      setIsSubmitting(false);
+      return;
+    }
+    if (depletion === "次の日に残した" && !leftoverKg) {
+      setErr("翌日に残したkgを入力してください");
+      setIsSubmitting(false);
+      return;
+    }
 
-    const payload: Report = { ticketId, factory, date, person, purchaseDate, species, origin, state, kg: kg ? Number(kg) : null };
+    const speciesForSubmit = fixedSpecies ?? species;
+    const speciesSeg = (speciesForSubmit || "").replace(/\s+/g, "");
+
+    const kgValue = depletion === "次の日に残した"
+      ? (leftoverKg ? Number(leftoverKg) : 0)
+      : 0;
+
+    const payload: Report = {
+      ticketId,
+      factory,
+      date,
+      person,
+      purchaseDate,
+      species: speciesForSubmit,
+      origin,
+      state,
+      kg: kgValue,
+      depletion,
+      leftoverKg: kgValue,
+    };
     try {
       const raw = localStorage.getItem(LS_KEYS.INVENTORY_REPORTS);
       const arr: Report[] = raw ? JSON.parse(raw) : [];
@@ -722,8 +830,8 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
       if (idx >= 0) arr[idx] = payload; else arr.push(payload);
       localStorage.setItem(LS_KEYS.INVENTORY_REPORTS, JSON.stringify(arr));
 
-      const prefixPara = `寄生虫_${yyyymmdd(date)}_${person}`;
-      const prefixForeign = `異物_${yyyymmdd(date)}_${person}`;
+      const prefixPara = `寄生虫_${speciesSeg}_${yyyymmdd(date)}_${person}`;
+      const prefixForeign = `異物_${speciesSeg}_${yyyymmdd(date)}_${person}`;
       const parasiteUrls = await uploadPhotos(parasitePhotos, prefixPara, DRIVE_FOLDER_ID_PHOTOS);
       const foreignUrls  = await uploadPhotos(foreignPhotos,  prefixForeign, DRIVE_FOLDER_ID_PHOTOS);
 
@@ -736,6 +844,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
       setPreviewOpen(true);
     } catch {
       setErr("保存に失敗しました");
+      setIsSubmitting(false);
     }
   };
 
@@ -750,16 +859,18 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
           <Badge>✅ Reconcile</Badge>
         </div>
 
-        <div className="p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm mb-4">
-          <label className="block font-medium mb-2">未消込のチケット（魚種）</label>
-          <div className="flex flex-wrap gap-2">
-            {(speciesOptions.length ? speciesOptions : ["（チケット未作成）"]).map((s) => (
-              <button key={s} onClick={() => setSpecies(s)} type="button" className={`px-3 py-1.5 rounded-full text-sm ring-1 transition ${species === s ? "bg-sky-600 text-white ring-sky-600" : "bg-sky-50 text-sky-700 ring-sky-200 hover:ring-sky-300"}`}>
-                {s}
-              </button>
-            ))}
+        {!fixedSpecies && (
+          <div className="p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm mb-4">
+            <label className="block font-medium mb-2">未消込のチケット（魚種）</label>
+            <div className="flex flex-wrap gap-2">
+              {(speciesOptions.length ? speciesOptions : ["（チケット未作成）"]).map((s) => (
+                <button key={s} onClick={() => setSpecies(s)} type="button" className={`px-3 py-1.5 rounded-full text-sm ring-1 transition ${species === s ? "bg-sky-600 text-white ring-sky-600" : "bg-sky-50 text-sky-700 ring-sky-200 hover:ring-sky-300"}`}>
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="grid md:grid-cols-3 gap-4">
@@ -769,7 +880,11 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
           </div>
           <div className="grid md:grid-cols-3 gap-4">
             <DateInput label="仕入れ日" value={purchaseDate} onChange={setPurchaseDate} />
-            <Select label="魚種（チケット選択）" value={species} onChange={setSpecies} options={speciesOptions} />
+            {fixedSpecies ? (
+              <ReadOnlyField label="魚種（チケット選択）" value={fixedSpecies} />
+            ) : (
+              <Select label="魚種（チケット選択）" value={species} onChange={setSpecies} options={speciesOptions} />
+            )}
             <Select label="産地（業者）" value={origin} onChange={setOrigin} options={master.origin} />
           </div>
           <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
@@ -791,9 +906,47 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
           </div>
 
           {err && <p className="text-red-600 text-sm">{err}</p>}
-          <NumberInput label="kg数（小数1位まで）" value={kg} onChange={setKg} step={0.1} min={0} />
+          <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+            <label className="block font-medium mb-2">在庫の結果</label>
+            <div className="flex items-center gap-6 text-sm mb-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  checked={depletion === "使い切った"}
+                  onChange={() => { setDepletion("使い切った"); setLeftoverKg(""); }}
+                />
+                使い切った
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  checked={depletion === "次の日に残した"}
+                  onChange={() => setDepletion("次の日に残した")}
+                />
+                次の日に残した
+              </label>
+            </div>
+
+            {depletion === "次の日に残した" && (
+              <div className="mt-2">
+                <NumberInput
+                  label="翌日に残したkg（小数1位まで）"
+                  value={leftoverKg}
+                  onChange={setLeftoverKg}
+                  step={0.1}
+                  min={0}
+                />
+              </div>
+            )}
+          </div>
+          {/* kg入力欄は廃止（翌日残量をkgとして送信） */}
           <div className="flex gap-3">
-            <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">在庫報告を登録</button>
+            <button
+              disabled={isSubmitting}
+              className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            >
+              在庫報告を登録
+            </button>
             <Link to="/" className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">ホームへ</Link>
           </div>
         </form>
@@ -804,7 +957,11 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
           title="添付写真のプレビュー"
           parasite={parasitePhotos}
           foreign={foreignPhotos}
-          onClose={() => { setPreviewOpen(false); nav("/"); }}
+          onClose={() => {
+            setPreviewOpen(false);
+            setIsSubmitting(false);
+            nav("/");
+          }}
         />
       )}
     </div>
@@ -826,6 +983,17 @@ function Select({ label, value, onChange, options, disabled }: { label: string; 
           <option key={o} value={o}>{o}</option>
         ))}
       </select>
+    </div>
+  );
+}
+
+function ReadOnlyField({ label, value }: { label: string; value: string; }) {
+  return (
+    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+      <label className="block text-sm font-medium mb-1 text-slate-700">{label}</label>
+      <div className="w-full border rounded-xl px-3 py-2 text-sm bg-slate-50 text-slate-700">
+        {value || ""}
+      </div>
     </div>
   );
 }
@@ -868,20 +1036,40 @@ function RadioYN({ label, value, onChange }: { label: string; value: "あり" | 
     </div>
   );
 }
+const FILE_GROUP_MAX = 10;
+
 function FileGroupYNMulti({ labelYN, yn, setYN, labelFile, files, setFiles, requiredWhenYes }: { labelYN: string; yn: "あり" | "なし"; setYN: (v: "あり" | "なし") => void; labelFile: string; files: File[]; setFiles: (f: File[]) => void; requiredWhenYes?: boolean; }) {
+  const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files || []);
+    if (!selected.length) return;
+    const combined = [...files, ...selected];
+    const next = combined.slice(0, FILE_GROUP_MAX);
+    setFiles(next);
+    e.target.value = "";
+  };
+
+  const removeFile = (index: number) => {
+    const next = files.filter((_, i) => i !== index);
+    setFiles(next);
+  };
+
   return (
     <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100 grid gap-3">
       <RadioYN label={labelYN} value={yn} onChange={setYN} />
       {yn === "あり" && (
         <div>
-          <label className="block text-sm font-medium mb-1 text-slate-700">{labelFile}</label>
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-medium mb-1 text-slate-700">{labelFile}</label>
+            <span className="text-xs text-slate-500">{files.length}/{FILE_GROUP_MAX}</span>
+          </div>
           <input
             type="file"
             accept="image/*"
             capture="environment"
             multiple
             className="w-full border rounded-xl px-3 py-2 text-sm"
-            onChange={(e) => setFiles(Array.from(e.target.files || []))}
+            onChange={handleFilesChange}
+            disabled={files.length >= FILE_GROUP_MAX}
           />
           {requiredWhenYes && files.length === 0 && (
             <p className="text-xs text-red-600 mt-1">ありの場合は写真が1枚以上必須です</p>
@@ -889,7 +1077,16 @@ function FileGroupYNMulti({ labelYN, yn, setYN, labelFile, files, setFiles, requ
           {files.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
               {files.map((f, i) => (
-                <img key={i} src={URL.createObjectURL(f)} alt="preview" className="h-16 w-16 object-cover rounded-md ring-1 ring-sky-200" />
+                <div key={`${f.name}-${i}`} className="relative h-16 w-16">
+                  <img src={URL.createObjectURL(f)} alt="preview" className="h-16 w-16 object-cover rounded-md ring-1 ring-sky-200" />
+                  <button
+                    type="button"
+                    onClick={() => removeFile(i)}
+                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-black/60 text-white text-xs flex items-center justify-center shadow"
+                  >
+                    ×
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -900,6 +1097,12 @@ function FileGroupYNMulti({ labelYN, yn, setYN, labelFile, files, setFiles, requ
 }
 
 function PhotosPreviewModal({ title, parasite, foreign, onClose }: { title: string; parasite: File[]; foreign: File[]; onClose: () => void; }) {
+  const [closing, setClosing] = useState(false);
+  const handle = () => {
+    if (closing) return;
+    setClosing(true);
+    onClose();
+  };
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
       <div className="bg-white rounded-3xl p-6 w-[min(720px,95vw)] max-h-[90vh] overflow-auto ring-1 ring-sky-100 shadow-xl">
@@ -923,7 +1126,13 @@ function PhotosPreviewModal({ title, parasite, foreign, onClose }: { title: stri
           </div>
         </div>
         <div className="mt-4 text-right">
-          <button onClick={onClose} className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">OK</button>
+          <button
+            onClick={handle}
+            disabled={closing}
+            className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+          >
+            OK
+          </button>
         </div>
       </div>
     </div>
