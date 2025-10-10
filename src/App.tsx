@@ -309,7 +309,7 @@ function Home({ onReloadMaster, masterLoading, masterError }: { onReloadMaster: 
   }, [tickets, m]);
 
   return (
-    <div className="min-h:[calc(100vh-56px)] min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to-white">
+    <div className="min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to-white">
       <div className="max-w-5xl mx-auto p-4">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -550,7 +550,7 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
           <Select label="管理者チェック" value={admin} onChange={setAdmin} options={master.admin} />
           {err && <p className="text-red-600 text-sm">{err}</p>}
 
-        <div className="flex gap-3">
+          <div className="flex gap-3">
             <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">登録</button>
             <Link to="/" className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">ホームへ</Link>
           </div>
@@ -627,8 +627,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
   const [species, setSpecies] = useState("" as string);
   const [fixedSpecies, setFixedSpecies] = useState<string | null>(null);
   const [origin, setOrigin] = useState(master.origin[0] || "");
-  const [state, setState] = useState<string>("ラウンド");
-  const [kg, setKg] = useState<string>("");
+  const [state, setState] = useState<string>("ラウンド"); // 単一選択
   const [depletion, setDepletion] = useState<"使い切った" | "次の日に残した">("使い切った");
   const [leftoverKg, setLeftoverKg] = useState<string>("");
 
@@ -690,6 +689,12 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
 
     const speciesForSubmit = fixedSpecies ?? species;
 
+    // kg は「翌日に残したkg」を流用。使い切った場合は 0
+    const kgValue =
+      depletion === "次の日に残した"
+        ? (leftoverKg ? Number(leftoverKg) : 0)
+        : 0;
+
     const payload: Report = {
       ticketId,
       factory,
@@ -699,9 +704,9 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
       species: speciesForSubmit,
       origin,
       state,
-      kg: kg ? Number(kg) : null,
+      kg: kgValue,
       depletion,
-      leftoverKg: depletion === "次の日に残した" ? (leftoverKg ? Number(leftoverKg) : null) : 0,
+      leftoverKg: kgValue,
     };
     try {
       const raw = localStorage.getItem(LS_KEYS.INVENTORY_REPORTS);
@@ -818,7 +823,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
               </div>
             )}
           </div>
-          <NumberInput label="kg数（小数1位まで）" value={kg} onChange={setKg} step={0.1} min={0} />
+          {/* kg入力欄は廃止（翌日残量をkgとして送信） */}
           <div className="flex gap-3">
             <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">在庫報告を登録</button>
             <Link to="/" className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">ホームへ</Link>
