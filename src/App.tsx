@@ -158,16 +158,36 @@ async function recordToSheet(type: "intake" | "inventory", payload: any) {
   await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
 }
 
-/** 画像アップロード（multipart / no-cors 応答は読まない） */
+/** 画像アップロード（Base64 / no-cors 応答は読まない） */
 async function uploadPhotos(files: File[], prefix: string, folderId?: string): Promise<string[]> {
   if (!API_URL || files.length === 0) return [];
+
+  // helper: File -> base64(dataURL) -> strip header
+  const toB64 = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => {
+        const v = String(fr.result || "");
+        const comma = v.indexOf(",");
+        resolve(comma >= 0 ? v.slice(comma + 1) : v);
+      };
+      fr.onerror = reject;
+      fr.readAsDataURL(file);
+    });
+
   const fd = new FormData();
-  fd.append("action", "upload");
+  fd.append("action", "uploadB64"); // GASのBase64ルートへ
   fd.append("prefix", prefix);
   if (folderId) fd.append("folderId", folderId);
-  files.forEach((file, i) => {
-    fd.append(`file${i}`, file);
-  });
+
+  const max = Math.min(files.length, 10);
+  for (let i = 0; i < max; i++) {
+    const f = files[i];
+    fd.append(`file${i}_name`, f.name);
+    fd.append(`file${i}_type`, f.type || "application/octet-stream");
+    fd.append(`file${i}_b64`, await toB64(f));
+  }
+
   await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
   return [];
 }
@@ -276,9 +296,9 @@ function Header() {
       <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="font-bold text-lg flex items-center gap-2">🐟 魚日報デモ</div>
         <div className="hidden md:flex gap-2 text-xs">
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg白/20" to="/">ホーム</Link>
-          <Link className="px-3 py-1.5 rounded-full bg白/10 hover:bg白/20" to="/intake">チケット作成</Link>
-          <Link className="px-3 py-1.5 rounded-full bg白/10 hover:bg白/20" to="/inventory">在庫報告</Link>
+          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/">ホーム</Link>
+          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/intake">チケット作成</Link>
+          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/inventory">在庫報告</Link>
         </div>
       </div>
     </div>
@@ -546,6 +566,7 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
       await recordToSheet("intake", payload);
       setPreviewOpen(true);
       onSubmitted(payload);
+      nav("/");
     } catch {
       setErr("保存に失敗しました");
       setIsSubmitting(false);
@@ -603,7 +624,6 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
             onClose={() => {
               setPreviewOpen(false);
               setIsSubmitting(false);
-              nav("/");
             }}
           />
         )}
@@ -785,6 +805,8 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
       });
 
       setPreviewOpen(true);
+      // 完了後ホームへ
+      nav("/");
     } catch {
       setErr("保存に失敗しました");
       setIsSubmitting(false);
@@ -794,7 +816,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
   return (
     <div className="min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to-white">
       <div className="max-w-5xl mx-auto p-4">
-        <div className="mb-4 p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm flex items中心 justify-between">
+        <div className="mb-4 p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-sky-900">魚原料在庫報告書</h1>
             <p className="text-slate-600 text-sm">作成済みのチケットから対象魚種を選び、在庫実績を記録します。</p>
