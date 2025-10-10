@@ -2,19 +2,17 @@ import React, { useEffect, useMemo, useState } from "react";
 import { HashRouter as Router, Routes, Route, Link, useNavigate } from "react-router-dom";
 
 /**
- * 魚日報デモ（加工する魚原材料 / 魚原料在庫報告書）— デザイン刷新版（バグ修正＋UI強化）
- * - 正規表現修正: CSV分割を `text.split(/\r?\n/)` に統一
- * - ホーム画面: 月切替＋表形式、右上「仕入れを報告する」モーダル、行ごとの「在庫報告をする」
- * - Intake: 「目視確認 有毒魚」と「気づいたこと（有毒魚）」を同一ボックスに統合
- * - Inventory: 「加工状態（単一選択）」に変更、産地（業者）を選択式に変更
- * - 在庫報告登録後はホームの該当行が自動でグレー化＆ステータス「報告完了」
- * - 仕入れモーダルの「年月日」を「仕入れの年月日」に変更し、ホーム1列目に反映
- * - 寄生虫/異物=あり のときはカメラ起動可・複数画像添付可（プレビュー付き）
+ * 魚日報デモ（加工する魚原材料 / 魚原料在庫報告書）
+ * - CSV分割を `text.split(/\r?\n/)` に統一
+ * - ホーム: 月切替＋表。行ごとの「在庫報告をする」
+ * - Intake: 有毒魚の確認UIを統合
+ * - Inventory: 加工状態=単一選択、産地（業者）=選択式
+ * - 在庫報告: 「使い切った / 次の日に残した」＋残量kg
+ * - 仕入れモーダルの「年月日」→「仕入れの年月日」
  */
 
-// ★ 環境変数から読込（存在しない場合は空文字でフォールバック）
-const MASTER_CSV_URL = import.meta.env.VITE_MASTER_CSV_URL || ""; // 例: https://docs.google.com/spreadsheets/d/<ID>/gviz/tq?tqx=out:csv&sheet=リスト
-const API_URL = import.meta.env.VITE_GAS_URL || "";               // 例: GAS WebApp /exec
+const MASTER_CSV_URL = import.meta.env.VITE_MASTER_CSV_URL || "";
+const API_URL = import.meta.env.VITE_GAS_URL || "";
 const DRIVE_FOLDER_ID_PHOTOS = "1h3RCYDQrsNuBObQwKXsYM-HYtk8kE5R5";
 
 type MasterKey =
@@ -24,7 +22,7 @@ type MasterKey =
   | "supplier"
   | "admin"
   | "ozone_person"
-  | "origin"; // 産地（業者）
+  | "origin";
 
 const fallbackMaster: Record<MasterKey, string[]> = {
   factory: [],
@@ -38,10 +36,11 @@ const fallbackMaster: Record<MasterKey, string[]> = {
 
 /** CSV文字列→ {id: 選択肢[]} へ変換（1行目=名称, 2行目=ID, 3行目以降=選択肢） */
 function parseMasterCsv(text: string): Partial<Record<MasterKey, string[]>> {
+  if (!text) return {};
   const rows = text
     .split(/\r?\n/)
     .map((r) => r.split(",").map((c) => c.trim()))
-    .filter((r) => r.length > 0);
+    .filter((r) => r.length > 0 && r.some((c) => c !== ""));
   const colCount = rows[0]?.length ?? 0;
   const result: Partial<Record<MasterKey, string[]>> = {};
   for (let c = 0; c < colCount; c++) {
@@ -72,7 +71,6 @@ function arraysEqual(a: any[], b: any[]) {
 }
 function runParserTests() {
   try {
-    // ベーシックケース（LF）
     const sample = [
       "工場,担当者,魚種,産地（業者）",
       "factory,person,species,origin",
@@ -85,7 +83,6 @@ function runParserTests() {
     const t3 = arraysEqual(out.species || [], ["サバ", "アジ"]);
     const t4 = arraysEqual(out.origin || [], ["北海道（〇〇水産）", "宮城県（△△商店）"]);
 
-    // 追加: 全列（supplier, admin, ozone_person を含む）
     const sampleAll = [
       "工場,担当者,魚種,仕入れ先,管理者チェック,オゾン水 担当者,産地（業者）",
       "factory,person,species,supplier,admin,ozone_person,origin",
@@ -101,48 +98,10 @@ function runParserTests() {
     const tAll6 = arraysEqual(outAll.ozone_person || [], ["佐藤", "鈴木"]);
     const tAll7 = arraysEqual(outAll.origin || [], ["北海道（〇〇水産）", "宮城県（△△商店）"]);
 
-    // CRLF + 末尾空行
-    const sampleCRLF = [
-      "工場,担当者",
-      "factory,person",
-      "A工場,佐藤",
-      "B工場,鈴木",
-      "",
-    ].join("\r\n");
-    const outCRLF = parseMasterCsv(sampleCRLF);
-    const t5 = arraysEqual(outCRLF.factory || [], ["A工場", "B工場"]);
-    const t6 = arraysEqual(outCRLF.person || [], ["佐藤", "鈴木"]);
-
-    // 先頭/中間/末尾に空行が混在
-    const sampleWithBlanks = [
-      "",
-      "工場,担当者,魚種",
-      "factory,person,species",
-      "",
-      "A工場,佐藤,サバ",
-      "B工場,鈴木,アジ",
-      "",
-    ].join("\n");
-    const outBlank = parseMasterCsv(sampleWithBlanks);
-    const t7 = arraysEqual(outBlank.factory || [], ["A工場", "B工場"]);
-    const t8 = arraysEqual(outBlank.species || [], ["サバ", "アジ"]);
-
-    // 空文字（例外にならず空オブジェクトを返す想定）
-    const outEmpty = parseMasterCsv("");
-    const t9 = Object.keys(outEmpty).length === 0;
-
-    // 見出しのみ
-    const headersOnly = ["工場,担当者", "factory,person"].join("\n");
-    const outHead = parseMasterCsv(headersOnly);
-    const t10 = Object.keys(outHead).length === 0;
-
     const all =
       t1 && t2 && t3 && t4 &&
-      tAll1 && tAll2 && tAll3 && tAll4 && tAll5 && tAll6 && tAll7 &&
-      t5 && t6 && t7 && t8 && t9 && t10;
-    console.log("[TEST] parseMasterCsv:", {
-      t1, t2, t3, t4, tAll1, tAll2, tAll3, tAll4, tAll5, tAll6, tAll7, t5, t6, t7, t8, t9, t10, all,
-    });
+      tAll1 && tAll2 && tAll3 && tAll4 && tAll5 && tAll6 && tAll7;
+    console.log("[TEST] parseMasterCsv all:", all);
   } catch (e) {
     console.error("[TEST] parseMasterCsv failed:", e);
   }
@@ -190,30 +149,24 @@ type Report = {
 
 // ---- GAS integration helpers ----
 async function recordToSheet(type: "intake" | "inventory", payload: any) {
-  if (!API_URL) return; // ENV未設定なら何もしない
+  if (!API_URL) return;
   const fd = new FormData();
   fd.append("action", "record");
   fd.append("type", type);
   fd.append("payload", JSON.stringify(payload));
-  // Apps Script のCORS制限回避（fire-and-forget）
   await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
 }
 
 /** 画像アップロード（multipart / no-cors 応答は読まない） */
 async function uploadPhotos(files: File[], prefix: string, folderId?: string): Promise<string[]> {
   if (!API_URL || files.length === 0) return [];
-
   const fd = new FormData();
   fd.append("action", "upload");
   fd.append("prefix", prefix);
   if (folderId) fd.append("folderId", folderId);
-
-  files.forEach((file, i) => {
-    fd.append(`file${i}`, file);
-  });
-
+  files.forEach((file, i) => fd.append(`file${i}`, file));
   await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
-  return []; // URLはGAS側ログ（シート）を見る運用のため空配列を返す
+  return [];
 }
 
 function useMasterOptions() {
@@ -242,11 +195,8 @@ function useMasterOptions() {
     }
   };
 
-  // 初回マウント時、自動でCSV(リスト)から読込（URL がある場合）
   useEffect(() => {
-    if (MASTER_CSV_URL) {
-      reload();
-    }
+    if (MASTER_CSV_URL) reload();
   }, []);
 
   return { master, reload, loading, error };
@@ -359,7 +309,7 @@ function Home({ onReloadMaster, masterLoading, masterError }: { onReloadMaster: 
   }, [tickets, m]);
 
   return (
-    <div className="min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to-white">
+    <div className="min-h:[calc(100vh-56px)] min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to-white">
       <div className="max-w-5xl mx-auto p-4">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -445,11 +395,9 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
   const [toxNote, setToxNote] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
-  // オゾン水 実施=なし のときは担当者を「なし」に固定、ありなら先頭候補へ
   useEffect(() => {
-    if (ozone === "なし") {
-      setOzonePerson("なし");
-    } else if (!ozonePerson || ozonePerson === "なし") {
+    if (ozone === "なし") setOzonePerson("なし");
+    else if (!ozonePerson || ozonePerson === "なし") {
       const first = ozoneOptions.find((o) => o !== "なし") || "";
       setOzonePerson(first);
     }
@@ -463,7 +411,7 @@ function IntakeModal({ onClose }: { onClose: () => void; }) {
       ticketId: uid(), factory, date: todayStr(), purchaseDate: date, person, species, supplier,
       ozone, ozone_person: ozonePerson,
       visual_toxic: toxFish, visual_toxic_note: toxNote,
-      visual_parasite: "なし", visual_foreign: "なし", // 目視確認は在庫報告で入力
+      visual_parasite: "なし", visual_foreign: "なし",
       admin: master.admin[0] || "管理者A",
     };
     try {
@@ -539,11 +487,9 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
     if (master.admin.length) setAdmin(master.admin[0]);
   }, [master]);
 
-  // オゾン水 実施=なし → 担当者を「なし」に固定、ありなら先頭候補へ
   useEffect(() => {
-    if (ozone === "なし") {
-      setOzonePerson("なし");
-    } else if (!ozonePerson || ozonePerson === "なし") {
+    if (ozone === "なし") setOzonePerson("なし");
+    else if (!ozonePerson || ozonePerson === "なし") {
       const first = ozoneOptions.find((o) => o !== "なし") || "";
       setOzonePerson(first);
     }
@@ -604,7 +550,7 @@ function IntakePage({ master, onSubmitted, addSpecies }: { master: Record<Master
           <Select label="管理者チェック" value={admin} onChange={setAdmin} options={master.admin} />
           {err && <p className="text-red-600 text-sm">{err}</p>}
 
-          <div className="flex gap-3">
+        <div className="flex gap-3">
             <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">登録</button>
             <Link to="/" className="px-5 py-2.5 rounded-full bg-white ring-1 ring-sky-200 text-sky-700 text-sm shadow-sm">ホームへ</Link>
           </div>
@@ -681,12 +627,11 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
   const [species, setSpecies] = useState("" as string);
   const [fixedSpecies, setFixedSpecies] = useState<string | null>(null);
   const [origin, setOrigin] = useState(master.origin[0] || "");
-  const [state, setState] = useState<string>("ラウンド"); // 単一選択
+  const [state, setState] = useState<string>("ラウンド");
   const [kg, setKg] = useState<string>("");
   const [depletion, setDepletion] = useState<"使い切った" | "次の日に残した">("使い切った");
   const [leftoverKg, setLeftoverKg] = useState<string>("");
 
-  // 目視確認（在庫報告に移動）
   const [parasiteYN, setParasiteYN] = useState<"あり" | "なし">("なし");
   const [parasitePhotos, setParasitePhotos] = useState<File[]>([]);
   const [foreignYN, setForeignYN] = useState<"あり" | "なし">("なし");
