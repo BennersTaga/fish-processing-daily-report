@@ -165,7 +165,9 @@ async function uploadPhotos(files: File[], prefix: string, folderId?: string): P
   fd.append("action", "upload");
   fd.append("prefix", prefix);
   if (folderId) fd.append("folderId", folderId);
-  files.forEach((file, i) => fd.append(`file${i}`, file));
+  files.forEach((file, i) => {
+    fd.append(`file${i}`, file);
+  });
   await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
   return [];
 }
@@ -274,9 +276,9 @@ function Header() {
       <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="font-bold text-lg flex items-center gap-2">🐟 魚日報デモ</div>
         <div className="hidden md:flex gap-2 text-xs">
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/">ホーム</Link>
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/intake">チケット作成</Link>
-          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20" to="/inventory">在庫報告</Link>
+          <Link className="px-3 py-1.5 rounded-full bg-white/10 hover:bg白/20" to="/">ホーム</Link>
+          <Link className="px-3 py-1.5 rounded-full bg白/10 hover:bg白/20" to="/intake">チケット作成</Link>
+          <Link className="px-3 py-1.5 rounded-full bg白/10 hover:bg白/20" to="/inventory">在庫報告</Link>
         </div>
       </div>
     </div>
@@ -743,6 +745,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
     }
 
     const speciesForSubmit = fixedSpecies ?? species;
+    const speciesSeg = (speciesForSubmit || "").replace(/\s+/g, "");
 
     // kg は「翌日に残したkg」を流用。使い切った場合は 0
     const kgValue =
@@ -770,8 +773,8 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
       if (idx >= 0) arr[idx] = payload; else arr.push(payload);
       localStorage.setItem(LS_KEYS.INVENTORY_REPORTS, JSON.stringify(arr));
 
-      const prefixPara = `寄生虫_${yyyymmdd(date)}_${person}`;
-      const prefixForeign = `異物_${yyyymmdd(date)}_${person}`;
+      const prefixPara = `寄生虫_${speciesSeg}_${yyyymmdd(date)}_${person}`;
+      const prefixForeign = `異物_${speciesSeg}_${yyyymmdd(date)}_${person}`;
       const parasiteUrls = await uploadPhotos(parasitePhotos, prefixPara, DRIVE_FOLDER_ID_PHOTOS);
       const foreignUrls  = await uploadPhotos(foreignPhotos,  prefixForeign, DRIVE_FOLDER_ID_PHOTOS);
 
@@ -791,7 +794,7 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
   return (
     <div className="min-h-[calc(100vh-56px)] bg-gradient-to-b from-sky-50 to-white">
       <div className="max-w-5xl mx-auto p-4">
-        <div className="mb-4 p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm flex items-center justify-between">
+        <div className="mb-4 p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm flex items中心 justify-between">
           <div>
             <h1 className="text-xl font-semibold text-sky-900">魚原料在庫報告書</h1>
             <p className="text-slate-600 text-sm">作成済みのチケットから対象魚種を選び、在庫実績を記録します。</p>
@@ -976,20 +979,40 @@ function RadioYN({ label, value, onChange }: { label: string; value: "あり" | 
     </div>
   );
 }
+const FILE_GROUP_MAX = 10;
+
 function FileGroupYNMulti({ labelYN, yn, setYN, labelFile, files, setFiles, requiredWhenYes }: { labelYN: string; yn: "あり" | "なし"; setYN: (v: "あり" | "なし") => void; labelFile: string; files: File[]; setFiles: (f: File[]) => void; requiredWhenYes?: boolean; }) {
+  const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files || []);
+    if (!selected.length) return;
+    const combined = [...files, ...selected];
+    const next = combined.slice(0, FILE_GROUP_MAX);
+    setFiles(next);
+    e.target.value = "";
+  };
+
+  const removeFile = (index: number) => {
+    const next = files.filter((_, i) => i !== index);
+    setFiles(next);
+  };
+
   return (
     <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100 grid gap-3">
       <RadioYN label={labelYN} value={yn} onChange={setYN} />
       {yn === "あり" && (
         <div>
-          <label className="block text-sm font-medium mb-1 text-slate-700">{labelFile}</label>
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-medium mb-1 text-slate-700">{labelFile}</label>
+            <span className="text-xs text-slate-500">{files.length}/{FILE_GROUP_MAX}</span>
+          </div>
           <input
             type="file"
             accept="image/*"
             capture="environment"
             multiple
             className="w-full border rounded-xl px-3 py-2 text-sm"
-            onChange={(e) => setFiles(Array.from(e.target.files || []))}
+            onChange={handleFilesChange}
+            disabled={files.length >= FILE_GROUP_MAX}
           />
           {requiredWhenYes && files.length === 0 && (
             <p className="text-xs text-red-600 mt-1">ありの場合は写真が1枚以上必須です</p>
@@ -997,7 +1020,16 @@ function FileGroupYNMulti({ labelYN, yn, setYN, labelFile, files, setFiles, requ
           {files.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
               {files.map((f, i) => (
-                <img key={i} src={URL.createObjectURL(f)} alt="preview" className="h-16 w-16 object-cover rounded-md ring-1 ring-sky-200" />
+                <div key={`${f.name}-${i}`} className="relative h-16 w-16">
+                  <img src={URL.createObjectURL(f)} alt="preview" className="h-16 w-16 object-cover rounded-md ring-1 ring-sky-200" />
+                  <button
+                    type="button"
+                    onClick={() => removeFile(i)}
+                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-black/60 text-white text-xs flex items-center justify-center shadow"
+                  >
+                    ×
+                  </button>
+                </div>
               ))}
             </div>
           )}
