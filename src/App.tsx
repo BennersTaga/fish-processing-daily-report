@@ -184,6 +184,8 @@ type Report = {
   origin: string;
   state: string; // 単一選択
   kg: number | null;
+  depletion: "使い切った" | "次の日に残した";
+  leftoverKg: number | null;
 };
 
 // ---- GAS integration helpers ----
@@ -197,34 +199,17 @@ async function recordToSheet(type: "intake" | "inventory", payload: any) {
   await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
 }
 
-/** 画像アップロード（Base64 送信 / no-cors 応答は読まない） */
+/** 画像アップロード（multipart / no-cors 応答は読まない） */
 async function uploadPhotos(files: File[], prefix: string, folderId?: string): Promise<string[]> {
   if (!API_URL || files.length === 0) return [];
 
-  // File → Base64（ヘッダ無し）へ変換
-  const toB64 = (f: File) =>
-    new Promise<{ name: string; type: string; b64: string }>((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => {
-        const dataUrl = String(fr.result || "");
-        const b64 = dataUrl.split(",")[1] || ""; // "data:image/jpeg;base64,...." の後半
-        resolve({ name: f.name, type: f.type || "application/octet-stream", b64 });
-      };
-      fr.onerror = reject;
-      fr.readAsDataURL(f);
-    });
-
-  const payloads = await Promise.all(files.map(toB64));
-
   const fd = new FormData();
-  fd.append("action", "uploadB64"); // ★ GAS 側の Base64 受け口
+  fd.append("action", "upload");
   fd.append("prefix", prefix);
   if (folderId) fd.append("folderId", folderId);
 
-  payloads.forEach((p, i) => {
-    fd.append(`file${i}_name`, p.name);
-    fd.append(`file${i}_type`, p.type);
-    fd.append(`file${i}_b64`,  p.b64);
+  files.forEach((file, i) => {
+    fd.append(`file${i}`, file);
   });
 
   await fetch(API_URL, { method: "POST", mode: "no-cors", body: fd }).catch(() => {});
@@ -685,9 +670,12 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
   const [person, setPerson] = useState(master.person[0] || "");
   const [purchaseDate, setPurchaseDate] = useState(todayStr());
   const [species, setSpecies] = useState("" as string);
+  const [fixedSpecies, setFixedSpecies] = useState<string | null>(null);
   const [origin, setOrigin] = useState(master.origin[0] || "");
   const [state, setState] = useState<string>("ラウンド"); // 単一選択
   const [kg, setKg] = useState<string>("");
+  const [depletion, setDepletion] = useState<"使い切った" | "次の日に残した">("使い切った");
+  const [leftoverKg, setLeftoverKg] = useState<string>("");
 
   // 目視確認（在庫報告に移動）
   const [parasiteYN, setParasiteYN] = useState<"あり" | "なし">("なし");
@@ -703,18 +691,64 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
   }, [speciesSet, master.species, qsSpecies]);
 
   useEffect(() => {
-    if (speciesOptions.length) setSpecies(speciesOptions[0]);
-    if (master.factory.length) setFactory(master.factory[0]);
-    if (master.person.length) setPerson(master.person[0]);
-  }, [speciesOptions, master]);
+    let resolved = "";
+    if (ticketId) {
+      try {
+        const raw = localStorage.getItem(LS_KEYS.INTAKE_SUBMISSIONS);
+        if (raw) {
+          const arr: Ticket[] = JSON.parse(raw);
+          const matched = arr.find((t) => t.ticketId === ticketId);
+          if (matched?.species) resolved = matched.species;
+        }
+      } catch {}
+    }
+    if (!resolved && qsSpecies) {
+      resolved = qsSpecies;
+    }
+    if (resolved) {
+      if (resolved !== fixedSpecies) {
+        setFixedSpecies(resolved);
+        setSpecies(resolved);
+      }
+    } else if (fixedSpecies) {
+      setFixedSpecies(null);
+      setSpecies("");
+    }
+  }, [ticketId, qsSpecies, fixedSpecies]);
+
+  useEffect(() => {
+    if (!fixedSpecies && !species && speciesOptions.length) {
+      setSpecies(speciesOptions[0]);
+    }
+  }, [speciesOptions, fixedSpecies, species]);
+
+  useEffect(() => {
+    if (master.factory.length) setFactory((prev) => prev || master.factory[0]);
+    if (master.person.length) setPerson((prev) => prev || master.person[0]);
+  }, [master]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr(null);
     if (parasiteYN === "あり" && parasitePhotos.length === 0) { setErr("寄生虫=あり の場合は写真が1枚以上必須です"); return; }
     if (foreignYN === "あり" && foreignPhotos.length === 0) { setErr("異物=あり の場合は写真が1枚以上必須です"); return; }
+    if (depletion === "次の日に残した" && !leftoverKg) { setErr("翌日に残したkgを入力してください"); return; }
 
-    const payload: Report = { ticketId, factory, date, person, purchaseDate, species, origin, state, kg: kg ? Number(kg) : null };
+    const speciesForSubmit = fixedSpecies ?? species;
+
+    const payload: Report = {
+      ticketId,
+      factory,
+      date,
+      person,
+      purchaseDate,
+      species: speciesForSubmit,
+      origin,
+      state,
+      kg: kg ? Number(kg) : null,
+      depletion,
+      leftoverKg: depletion === "次の日に残した" ? (leftoverKg ? Number(leftoverKg) : null) : 0,
+    };
     try {
       const raw = localStorage.getItem(LS_KEYS.INVENTORY_REPORTS);
       const arr: Report[] = raw ? JSON.parse(raw) : [];
@@ -750,16 +784,18 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
           <Badge>✅ Reconcile</Badge>
         </div>
 
-        <div className="p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm mb-4">
-          <label className="block font-medium mb-2">未消込のチケット（魚種）</label>
-          <div className="flex flex-wrap gap-2">
-            {(speciesOptions.length ? speciesOptions : ["（チケット未作成）"]).map((s) => (
-              <button key={s} onClick={() => setSpecies(s)} type="button" className={`px-3 py-1.5 rounded-full text-sm ring-1 transition ${species === s ? "bg-sky-600 text-white ring-sky-600" : "bg-sky-50 text-sky-700 ring-sky-200 hover:ring-sky-300"}`}>
-                {s}
-              </button>
-            ))}
+        {!fixedSpecies && (
+          <div className="p-4 rounded-3xl bg-white ring-1 ring-sky-100 shadow-sm mb-4">
+            <label className="block font-medium mb-2">未消込のチケット（魚種）</label>
+            <div className="flex flex-wrap gap-2">
+              {(speciesOptions.length ? speciesOptions : ["（チケット未作成）"]).map((s) => (
+                <button key={s} onClick={() => setSpecies(s)} type="button" className={`px-3 py-1.5 rounded-full text-sm ring-1 transition ${species === s ? "bg-sky-600 text-white ring-sky-600" : "bg-sky-50 text-sky-700 ring-sky-200 hover:ring-sky-300"}`}>
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="grid md:grid-cols-3 gap-4">
@@ -769,7 +805,11 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
           </div>
           <div className="grid md:grid-cols-3 gap-4">
             <DateInput label="仕入れ日" value={purchaseDate} onChange={setPurchaseDate} />
-            <Select label="魚種（チケット選択）" value={species} onChange={setSpecies} options={speciesOptions} />
+            {fixedSpecies ? (
+              <ReadOnlyField label="魚種（チケット選択）" value={fixedSpecies} />
+            ) : (
+              <Select label="魚種（チケット選択）" value={species} onChange={setSpecies} options={speciesOptions} />
+            )}
             <Select label="産地（業者）" value={origin} onChange={setOrigin} options={master.origin} />
           </div>
           <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
@@ -791,6 +831,39 @@ function InventoryPage({ master, speciesSet }: { master: Record<MasterKey, strin
           </div>
 
           {err && <p className="text-red-600 text-sm">{err}</p>}
+          <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+            <label className="block font-medium mb-2">在庫の結果</label>
+            <div className="flex items-center gap-6 text-sm mb-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  checked={depletion === "使い切った"}
+                  onChange={() => { setDepletion("使い切った"); setLeftoverKg(""); }}
+                />
+                使い切った
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  checked={depletion === "次の日に残した"}
+                  onChange={() => setDepletion("次の日に残した")}
+                />
+                次の日に残した
+              </label>
+            </div>
+
+            {depletion === "次の日に残した" && (
+              <div className="mt-2">
+                <NumberInput
+                  label="翌日に残したkg（小数1位まで）"
+                  value={leftoverKg}
+                  onChange={setLeftoverKg}
+                  step={0.1}
+                  min={0}
+                />
+              </div>
+            )}
+          </div>
           <NumberInput label="kg数（小数1位まで）" value={kg} onChange={setKg} step={0.1} min={0} />
           <div className="flex gap-3">
             <button className="px-5 py-2.5 rounded-full bg-sky-600 hover:bg-sky-700 text-white text-sm shadow">在庫報告を登録</button>
@@ -826,6 +899,17 @@ function Select({ label, value, onChange, options, disabled }: { label: string; 
           <option key={o} value={o}>{o}</option>
         ))}
       </select>
+    </div>
+  );
+}
+
+function ReadOnlyField({ label, value }: { label: string; value: string; }) {
+  return (
+    <div className="p-4 rounded-3xl bg-white shadow-sm ring-1 ring-sky-100">
+      <label className="block text-sm font-medium mb-1 text-slate-700">{label}</label>
+      <div className="w-full border rounded-xl px-3 py-2 text-sm bg-slate-50 text-slate-700">
+        {value || ""}
+      </div>
     </div>
   );
 }
