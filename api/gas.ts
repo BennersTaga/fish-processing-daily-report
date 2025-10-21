@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-export const config = { runtime: 'nodejs18.x' };
+
+// Vercelの有効値は "nodejs" / "edge" / "experimental-edge"
+export const config = { runtime: 'nodejs' };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -40,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(JSON.parse(text));
     } catch {
       res.setHeader('Content-Type', 'application/json');
-      return res.status(200).send(text); // Express の res.type は使わない
+      return res.status(200).send(text); // ← res.type(...) は使わない
     }
   } catch (e: any) {
     return res.status(502).json({ ok: false, error: 'proxy_error', detail: e?.message || String(e) });

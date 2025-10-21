@@ -3,27 +3,23 @@ const DIRECT_BASE = (import.meta.env.VITE_GAS_URL as string | undefined) || '';
 const BASE = USE_PROXY ? '/api/gas' : DIRECT_BASE;
 
 function ensureBase(): string {
-  if (!BASE) {
-    throw new Error('GAS endpoint is not configured');
-  }
+  if (!BASE) throw new Error('GAS endpoint is not configured');
   return BASE;
 }
 
-// "YYYY-MM" 形式の文字列を返す
+// "YYYY-MM" 文字列を返す
 export function formatMonth(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
 }
 
 async function get<T>(params: Record<string, string>): Promise<T> {
   const base = ensureBase();
   const qs = new URLSearchParams(params).toString();
-  const res = await fetch(`${base}${qs ? `?${qs}` : ''}`, { method: 'GET' });
+  const res = await fetch(`${base}${qs ? `?${qs}` : ''}`, { method: 'GET' }); // 余計なヘッダ付けない
   const json = await res.json();
-  if (!json.ok) {
-    throw new Error(json.error || 'GAS error');
-  }
+  if (!json.ok) throw new Error(json.error || 'GAS error');
   return json as T;
 }
 
@@ -36,9 +32,7 @@ async function post<T>(params: Record<string, string>, body: unknown): Promise<T
     body: JSON.stringify(body ?? {}),
   });
   const json = await res.json();
-  if (!json.ok) {
-    throw new Error(json.error || 'GAS error');
-  }
+  if (!json.ok) throw new Error(json.error || 'GAS error');
   return json as T;
 }
 
