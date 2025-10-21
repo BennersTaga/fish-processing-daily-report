@@ -21,6 +21,7 @@ Google Sheets / Google Drive と連携する日報入力ツールです。仕入
    | ------ | ---- |
    | `VITE_MASTER_CSV_URL` | Google スプレッドシートから公開した CSV の URL |
    | `VITE_GAS_URL` | Google Apps Script の Web アプリ（/exec）URL |
+   | `VITE_USE_PROXY` | Vercel Functions 経由で GAS を呼び出す場合は `1`（既定）、直接呼び出す場合は `0` |
 
 3. 開発サーバーを起動します。
 
@@ -34,6 +35,7 @@ Google Sheets / Google Drive と連携する日報入力ツールです。仕入
 2. Google Apps Script で Web アプリを作成し、日報データの保存と Drive へのファイル保存処理を実装します。
 3. 「デプロイ > 新しいデプロイ」で Web アプリとして公開し、アクセス権限を「全員」に設定します。
 4. 発行された Web アプリの `/exec` URL を `VITE_GAS_URL` に設定します。
+5. Vercel デプロイでは、`api/gas.ts` が同一オリジンのプロキシとして動作します。`GAS_URL` 環境変数に `/exec` URL を設定し、必要に応じて `VITE_USE_PROXY=1` を指定してください。
 5. Apps Script 側では `action=upload` と `action=record` を受け取り、JSON で `files: [{ url: "https://..." }]` の形でレスポンスを返すようにしてください。
 
 ## デプロイ
