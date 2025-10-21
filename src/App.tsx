@@ -14,6 +14,25 @@ import { InventoryReport, Master } from './types';
 
 const LEGACY_KEYS = ['fish-demo.intakeSubmissions', 'fish-demo.inventoryReports', 'fish-demo.master'];
 
+/** yyyy-MM-dd HH:mm */
+function formatYmdHm(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${d} ${hh}:${mm}`;
+}
+
+/** item.date を短く表示（ISOは yyyy-MM-dd HH:mm、それ以外はそのまま） */
+function prettyDate(v: string | Date | undefined): string {
+  if (!v) return '—';
+  if (v instanceof Date) return formatYmdHm(v);
+  if (/^\d{4}-\d{2}-\d{2}T/.test(v)) return formatYmdHm(new Date(v));
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  return v;
+}
+
 function getHashQueryString() {
   if (typeof window === 'undefined') return '';
   const hash = window.location.hash || '';
@@ -40,15 +59,9 @@ function Header() {
           🐟 魚日報ダッシュボード
         </Link>
         <nav className="flex items-center gap-3 text-sm">
-          <Link to="/" className="hover:underline">
-            ホーム
-          </Link>
-          <Link to="/intake" className="hover:underline">
-            仕入れ
-          </Link>
-          <Link to="/inventory" className="hover:underline">
-            在庫報告
-          </Link>
+          <Link to="/" className="hover:underline">ホーム</Link>
+          <Link to="/intake" className="hover:underline">仕入れ</Link>
+          <Link to="/inventory" className="hover:underline">在庫報告</Link>
         </nav>
       </div>
     </header>
@@ -103,9 +116,7 @@ function HomePage() {
             <Button type="button" variant="secondary" onClick={() => void load()} disabled={loading}>
               {loading ? '読込中…' : '再読込'}
             </Button>
-            <Button type="button" onClick={() => navigate('/intake')}>
-              仕入れを報告する
-            </Button>
+            <Button type="button" onClick={() => navigate('/intake')}>仕入れを報告する</Button>
           </div>
         }
       >
@@ -135,29 +146,32 @@ function HomePage() {
                   </td>
                 </tr>
               ) : null}
-              {items.map((item) => (
-                <tr key={item.ticketId}>
-                  <td className="px-4 py-2">
-                    {item.date
-                      ? typeof item.date === 'string'
-                        ? item.date
-                        : new Date(item.date).toLocaleDateString('ja-JP')
-                      : '—'}
-                  </td>
-                  <td className="px-4 py-2">{item.species || '—'}</td>
-                  <td className="px-4 py-2">{item.factory || '—'}</td>
-                  <td className="px-4 py-2">{item.status || '—'}</td>
-                  <td className="px-4 py-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => navigate(`/inventory?ticketId=${encodeURIComponent(item.ticketId)}`)}
-                    >
-                      在庫報告を開く
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {items.map((item) => {
+                const done = item.status === '報告完了';
+                return (
+                  <tr key={item.ticketId} className={done ? 'opacity-60' : undefined}>
+                    <td className="px-4 py-2">{prettyDate(item.date)}</td>
+                    <td className="px-4 py-2">{item.species || '—'}</td>
+                    <td className="px-4 py-2">{item.factory || '—'}</td>
+                    <td className="px-4 py-2">{item.status || '—'}</td>
+                    <td className="px-4 py-2">
+                      {done ? (
+                        <span className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1 text-xs text-slate-400">
+                          在庫報告済み
+                        </span>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => navigate(`/inventory?ticketId=${encodeURIComponent(item.ticketId)}`)}
+                        >
+                          在庫報告を開く
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
