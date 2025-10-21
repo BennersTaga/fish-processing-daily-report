@@ -1,38 +1,61 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-export const config = { runtime: 'nodejs18.x' };
+type VercelRequest = {
+  method?: string;
+  query?: Record<string, string | string[]>;
+  body?: unknown;
+};
+
+type VercelResponse = {
+  setHeader(name: string, value: string): void;
+  status(code: number): VercelResponse;
+  json(body: unknown): void;
+  end(): void;
+  type(contentType: string): VercelResponse;
+  send(body: string): void;
+};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const GAS = process.env.GAS_URL?.trim();
-  if (!GAS) return res.status(500).json({ ok: false, error: 'GAS_URL not set' });
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
 
-  const qs = new URLSearchParams((req.query as Record<string, string>) || {}).toString();
+  const GAS = process.env.GAS_URL;
+  if (!GAS) {
+    res.status(500).json({ ok: false, error: 'GAS_URL not set' });
+    return;
+  }
+
+  const query = req.query ?? {};
+  const searchParams = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((v) => searchParams.append(key, String(v)));
+    } else if (value != null) {
+      searchParams.append(key, String(value));
+    }
+  });
+
+  const qs = searchParams.toString();
   const url = `${GAS}${qs ? `?${qs}` : ''}`;
 
-  const init: RequestInit =
-    req.method === 'GET' || req.method === 'HEAD'
-      ? { method: 'GET' }
-      : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req.body ?? {}) };
-
   try {
-    const upstream = await fetch(url, init);
+    const upstream = await fetch(url, {
+      method: req.method,
+      headers: { 'Content-Type': 'application/json' },
+      body:
+        req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS'
+          ? undefined
+          : JSON.stringify(req.body ?? {}),
+    });
+
     const text = await upstream.text();
-
-    if (!upstream.ok) {
-      return res.status(502).json({ ok: false, error: 'upstream_http_error', status: upstream.status, url, body: text.slice(0,500) });
-    }
-
-    try { // JSONならそのまま返す
-      return res.status(200).json(JSON.parse(text));
-    } catch {
-      res.setHeader('Content-Type', 'application/json');
-      return res.status(200).send(text); // ← .type(...) は使わない
-    }
-  } catch (e: any) {
-    return res.status(502).json({ ok: false, error: 'proxy_error', detail: e?.message || String(e) });
+    res.status(upstream.status).type('application/json').send(text);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(502).json({ ok: false, error: 'proxy_error', detail: message });
   }
 }
