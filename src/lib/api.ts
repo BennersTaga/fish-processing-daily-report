@@ -1,66 +1,48 @@
-const BASE = import.meta.env.VITE_GAS_WEBAPP_URL as string;
-const SSID = import.meta.env.VITE_SPREADSHEET_ID as string;
-export const SHEET_LIST = import.meta.env.VITE_SHEET_LIST as string;
-export const SHEET_ACTION = import.meta.env.VITE_SHEET_ACTION as string;
-export const DRIVE_FOLDER_ID = import.meta.env.VITE_DRIVE_FOLDER_ID_PHOTOS as string;
+const GAS = import.meta.env.VITE_GAS_URL as string;
 
-export type Master = Record<string, string[]>;
-
-function requireEnv(value: string | undefined, key: string) {
-  if (!value) {
-    throw new Error(`Missing environment variable: ${key}`);
+function withOrigin(params: Record<string, string>) {
+  if (typeof window === 'undefined') {
+    return params;
   }
-  return value;
+  return { ...params, origin: window.location.origin };
 }
 
-const BASE_URL = requireEnv(BASE, 'VITE_GAS_WEBAPP_URL');
-const SPREADSHEET_ID = requireEnv(SSID, 'VITE_SPREADSHEET_ID');
-
-export async function fetchMaster(): Promise<Master> {
-  const url = `${BASE_URL}?action=master&spreadsheetId=${encodeURIComponent(SPREADSHEET_ID)}&sheet=${encodeURIComponent(SHEET_LIST)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('master fetch failed');
-  return (await res.json()) as Master;
-}
-
-export async function postIntake(payload: unknown) {
-  const res = await fetch(`${BASE_URL}?action=intake`, {
-    method: 'POST',
+async function req<T>(method: 'GET' | 'POST', params: Record<string, string>, body?: unknown): Promise<T> {
+  if (!GAS) {
+    throw new Error('VITE_GAS_URL is not configured');
+  }
+  const qs = new URLSearchParams(withOrigin(params)).toString();
+  const res = await fetch(`${GAS}?${qs}`, {
+    method,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: method === 'POST' ? JSON.stringify(body ?? {}) : undefined,
+    credentials: 'omit',
   });
-  if (!res.ok) throw new Error('intake post failed');
-  return await res.json();
+  const json = await res.json();
+  if (!json.ok) {
+    throw new Error(json.error || 'GAS error');
+  }
+  return json as T;
 }
 
-export async function postInventory(payload: unknown) {
-  const res = await fetch(`${BASE_URL}?action=inventory`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error('inventory post failed');
-  return await res.json();
+export function recordToSheet(payload: unknown, type: 'intake' | 'inventory') {
+  return req<{ ok: true; result: unknown }>('POST', { action: 'record', type }, payload);
 }
 
-async function fileToDataURL(file: File) {
-  const buffer = await file.arrayBuffer();
-  const binary = String.fromCharCode(...new Uint8Array(buffer));
-  const base64 = btoa(binary);
-  return `data:${file.type || 'image/jpeg'};base64,${base64}`;
+export function uploadB64(payload: {
+  ticketId?: string;
+  fileName?: string;
+  contentB64: string;
+  mimeType?: string;
+  apiKey?: string;
+}) {
+  return req<{ ok: true; result: unknown }>('POST', { action: 'uploadB64' }, payload);
 }
 
-export async function uploadPhotos(prefix: string, files: File[]) {
-  if (!files.length) return { ok: true, files: [] };
-  const dataUrls = await Promise.all(files.map(fileToDataURL));
-  const form = new FormData();
-  form.append('meta', JSON.stringify({ prefix }));
-  dataUrls.forEach((value) => form.append('file', value));
+export function fetchList(month: string) {
+  return req<{ ok: true; items: any[] }>('GET', { action: 'list', month });
+}
 
-  const res = await fetch(`${BASE_URL}?action=upload`, {
-    method: 'POST',
-    body: form,
-  });
-  if (!res.ok) throw new Error('upload failed');
-  return await res.json();
+export function fetchTicket(id: string) {
+  return req<{ ok: true; item: any }>('GET', { action: 'ticket', id });
 }
