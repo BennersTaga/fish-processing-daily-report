@@ -1,22 +1,39 @@
-const GAS = import.meta.env.VITE_GAS_URL as string;
+const USE_PROXY = (import.meta.env.VITE_USE_PROXY ?? '1') !== '0';
+const DIRECT_BASE = (import.meta.env.VITE_GAS_URL as string | undefined) || '';
+const BASE = USE_PROXY ? '/api/gas' : DIRECT_BASE;
 
-function withOrigin(params: Record<string, string>) {
-  if (typeof window === 'undefined') {
-    return params;
+function ensureBase(): string {
+  if (!BASE) {
+    throw new Error('GAS endpoint is not configured');
   }
-  return { ...params, origin: window.location.origin };
+  return BASE;
 }
 
-async function req<T>(method: 'GET' | 'POST', params: Record<string, string>, body?: unknown): Promise<T> {
-  if (!GAS) {
-    throw new Error('VITE_GAS_URL is not configured');
+// "YYYY-MM" 形式の文字列を返す
+export function formatMonth(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+async function get<T>(params: Record<string, string>): Promise<T> {
+  const base = ensureBase();
+  const qs = new URLSearchParams(params).toString();
+  const res = await fetch(`${base}${qs ? `?${qs}` : ''}`, { method: 'GET' });
+  const json = await res.json();
+  if (!json.ok) {
+    throw new Error(json.error || 'GAS error');
   }
-  const qs = new URLSearchParams(withOrigin(params)).toString();
-  const res = await fetch(`${GAS}?${qs}`, {
-    method,
+  return json as T;
+}
+
+async function post<T>(params: Record<string, string>, body: unknown): Promise<T> {
+  const base = ensureBase();
+  const qs = new URLSearchParams(params).toString();
+  const res = await fetch(`${base}${qs ? `?${qs}` : ''}`, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: method === 'POST' ? JSON.stringify(body ?? {}) : undefined,
-    credentials: 'omit',
+    body: JSON.stringify(body ?? {}),
   });
   const json = await res.json();
   if (!json.ok) {
@@ -25,24 +42,33 @@ async function req<T>(method: 'GET' | 'POST', params: Record<string, string>, bo
   return json as T;
 }
 
-export function recordToSheet(payload: unknown, type: 'intake' | 'inventory') {
-  return req<{ ok: true; result: unknown }>('POST', { action: 'record', type }, payload);
+export type ListItem = {
+  date: string | Date;
+  type: 'intake' | 'inventory';
+  ticketId: string;
+  species?: string;
+  factory?: string;
+  status?: string;
+};
+
+export async function fetchList(month: string) {
+  return get<{ ok: true; items: ListItem[] }>({ action: 'list', month });
 }
 
-export function uploadB64(payload: {
+export async function recordToSheet(payload: unknown, type: 'intake' | 'inventory') {
+  return post<{ ok: true; result: unknown }>({ action: 'record', type }, payload);
+}
+
+export async function uploadB64(payload: {
   ticketId?: string;
   fileName?: string;
   contentB64: string;
   mimeType?: string;
   apiKey?: string;
 }) {
-  return req<{ ok: true; result: unknown }>('POST', { action: 'uploadB64' }, payload);
+  return post<{ ok: true; result: unknown }>({ action: 'uploadB64' }, payload);
 }
 
-export function fetchList(month: string) {
-  return req<{ ok: true; items: any[] }>('GET', { action: 'list', month });
-}
-
-export function fetchTicket(id: string) {
-  return req<{ ok: true; item: any }>('GET', { action: 'ticket', id });
+export async function fetchTicket(id: string) {
+  return get<{ ok: true; item: Record<string, string> | null }>({ action: 'ticket', id });
 }

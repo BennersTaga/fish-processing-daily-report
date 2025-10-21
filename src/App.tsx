@@ -7,26 +7,12 @@ import { Button } from './components/Button';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { Alert } from './components/Alert';
 import { useMasterOptions } from './hooks/useMasterOptions';
-import { fetchList, fetchTicket } from './lib/api';
+import { fetchList, fetchTicket, formatMonth } from './lib/api';
+import type { ListItem } from './lib/api';
 import { syncPending } from './lib/offlineQueue';
 import { InventoryReport, Master } from './types';
 
 const LEGACY_KEYS = ['fish-demo.intakeSubmissions', 'fish-demo.inventoryReports', 'fish-demo.master'];
-
-type ListItem = {
-  date: string;
-  type: string;
-  ticketId: string;
-  species: string;
-  factory: string;
-  status: string;
-};
-
-function currentMonth() {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  return `${now.getFullYear()}-${month}`;
-}
 
 function getHashQueryString() {
   if (typeof window === 'undefined') return '';
@@ -70,7 +56,7 @@ function Header() {
 }
 
 function HomePage() {
-  const [month, setMonth] = useState(currentMonth());
+  const [month, setMonth] = useState(() => formatMonth(new Date()));
   const [items, setItems] = useState<ListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +66,8 @@ function HomePage() {
     setLoading(true);
     setError(null);
     try {
-      const { items: response } = await fetchList(month);
+      const targetMonth = month || formatMonth(new Date());
+      const { items: response } = await fetchList(targetMonth);
       setItems(Array.isArray(response) ? (response as ListItem[]) : []);
     } catch (err) {
       console.error(err);
@@ -90,6 +77,11 @@ function HomePage() {
       setLoading(false);
     }
   }, [month]);
+
+  useEffect(() => {
+    // 旧キーの掃除（幽霊データ対策）
+    LEGACY_KEYS.forEach((key) => localStorage.removeItem(key));
+  }, []);
 
   useEffect(() => {
     void load();
@@ -117,7 +109,7 @@ function HomePage() {
           </div>
         }
       >
-        {error ? <Alert variant="error" title="取得エラー" description={error} /> : null}
+        {error ? <Alert variant="error" description={`取得エラー：${error}`} /> : null}
         {loading ? (
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <LoadingSpinner />
@@ -145,7 +137,13 @@ function HomePage() {
               ) : null}
               {items.map((item) => (
                 <tr key={item.ticketId}>
-                  <td className="px-4 py-2">{item.date || '—'}</td>
+                  <td className="px-4 py-2">
+                    {item.date
+                      ? typeof item.date === 'string'
+                        ? item.date
+                        : new Date(item.date).toLocaleDateString('ja-JP')
+                      : '—'}
+                  </td>
                   <td className="px-4 py-2">{item.species || '—'}</td>
                   <td className="px-4 py-2">{item.factory || '—'}</td>
                   <td className="px-4 py-2">{item.status || '—'}</td>
