@@ -79,6 +79,7 @@ function HomePage() {
   }, [month]);
 
   useEffect(() => {
+    // 旧キーの掃除（幽霊データ対策）
     LEGACY_KEYS.forEach((key) => localStorage.removeItem(key));
   }, []);
 
