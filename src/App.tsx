@@ -29,8 +29,8 @@ function prettyDate(v: string | Date | undefined): string {
   if (!v) return '—';
   if (v instanceof Date) return formatYmdHm(v);
   if (/^\d{4}-\d{2}-\d{2}T/.test(v)) return formatYmdHm(new Date(v));
-  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v; // 既に日付のみはそのまま
-  return v; // 不明形式は生表示
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  return v;
 }
 
 function getHashQueryString() {
@@ -163,9 +163,7 @@ function HomePage() {
                         <Button
                           type="button"
                           variant="secondary"
-                          onClick={() =>
-                            navigate(`/inventory?ticketId=${encodeURIComponent(item.ticketId)}`)
-                          }
+                          onClick={() => navigate(`/inventory?ticketId=${encodeURIComponent(item.ticketId)}`)}
                         >
                           在庫報告を開く
                         </Button>
@@ -323,4 +321,3 @@ export default function App() {
     </Router>
   );
 }
-
