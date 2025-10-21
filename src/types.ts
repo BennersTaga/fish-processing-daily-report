@@ -1,3 +1,5 @@
+export type Master = Record<string, string[]>;
+
 export type IntakeTicket = {
   ticketId: string;
   factory: string;

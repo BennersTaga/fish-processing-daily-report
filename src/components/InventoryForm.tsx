@@ -1,6 +1,7 @@
-import { FormEvent, useMemo, useState } from 'react';
-import { Master, postInventory, uploadPhotos } from '../lib/api';
-import { InventoryReport, SubmissionState } from '../types';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { recordToSheet, uploadB64 } from '../lib/api';
+import { enqueue } from '../lib/offlineQueue';
+import { InventoryReport, Master, SubmissionState } from '../types';
 import { usePersistentState } from '../store/usePersistentState';
 import { FormField } from './FormField';
 import { OptionSelect } from './OptionSelect';
@@ -26,9 +27,36 @@ const createDefaultReport = (): InventoryReport => ({
 type Props = {
   master: Master;
   onSubmitSuccess?: (payload: InventoryReport) => void;
+  initialValues?: Partial<InventoryReport> | null;
 };
 
-export function InventoryForm({ master, onSubmitSuccess }: Props) {
+async function fileToBase64(file: File) {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+async function uploadFiles(ticketId: string, label: string, files: File[]) {
+  for (const file of files) {
+    try {
+      await uploadB64({
+        ticketId,
+        fileName: `${label}_${file.name}`,
+        contentB64: await fileToBase64(file),
+        mimeType: file.type || 'image/png',
+      });
+    } catch (err) {
+      console.error('upload failed', err);
+    }
+  }
+}
+
+export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props) {
   const [report, setReport, resetReport] = usePersistentState<InventoryReport>(
     'fish-processing/inventory-form',
     createDefaultReport(),
@@ -37,6 +65,11 @@ export function InventoryForm({ master, onSubmitSuccess }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [parasitePhotos, setParasitePhotos] = useState<File[]>([]);
   const [foreignPhotos, setForeignPhotos] = useState<File[]>([]);
+
+  useEffect(() => {
+    if (!initialValues) return;
+    setReport((prev) => ({ ...prev, ...initialValues }));
+  }, [initialValues, setReport]);
 
   const options = useMemo(
     () => ({
@@ -69,28 +102,40 @@ export function InventoryForm({ master, onSubmitSuccess }: Props) {
 
     setState('submitting');
     setError(null);
-    try {
-      await postInventory(report);
-      const baseDate = report.date ? new Date(report.date) : new Date();
-      const yyyymmdd = formatYmd(baseDate);
-      const person = report.person || '未設定';
+    if (parasitePhotos.length === 0 && report.visual_parasite === 'あり') {
+      setState('error');
+      setError('寄生虫=あり の場合は写真が1枚以上必須です');
+      return;
+    }
+    if (foreignPhotos.length === 0 && report.visual_foreign === 'あり') {
+      setState('error');
+      setError('異物=あり の場合は写真が1枚以上必須です');
+      return;
+    }
 
+    const payload = { ...report };
+    try {
+      await recordToSheet(payload, 'inventory');
+      const baseDate = payload.date ? new Date(payload.date) : new Date();
+      const yyyymmdd = formatYmd(baseDate);
+      const ticketId = payload.ticketId;
       if (parasitePhotos.length) {
-        await uploadPhotos(`寄生虫_${yyyymmdd}_${person}`, parasitePhotos);
+        await uploadFiles(ticketId, `寄生虫_${yyyymmdd}`, parasitePhotos);
       }
       if (foreignPhotos.length) {
-        await uploadPhotos(`異物_${yyyymmdd}_${person}`, foreignPhotos);
+        await uploadFiles(ticketId, `異物_${yyyymmdd}`, foreignPhotos);
       }
-
       setState('success');
-      onSubmitSuccess?.(report);
+      onSubmitSuccess?.(payload);
+      resetReport();
+      setReport(createDefaultReport());
       setParasitePhotos([]);
       setForeignPhotos([]);
     } catch (err) {
       console.error(err);
+      enqueue({ type: 'inventory', payload });
       setState('error');
-      setError(err instanceof Error ? err.message : '送信に失敗しました');
-      return;
+      setError(err instanceof Error ? `${err.message}（送信失敗のため端末に保存しました）` : '送信に失敗しました');
     }
   };
 
