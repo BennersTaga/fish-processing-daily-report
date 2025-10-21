@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useState } from 'react';
-import { Master, postIntake } from '../lib/api';
-import { IntakeTicket, SubmissionState } from '../types';
+import { recordToSheet } from '../lib/api';
+import { enqueue } from '../lib/offlineQueue';
+import { IntakeTicket, Master, SubmissionState } from '../types';
 import { usePersistentState } from '../store/usePersistentState';
 import { FormField } from './FormField';
 import { OptionSelect } from './OptionSelect';
@@ -66,15 +67,18 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
     if (!requiredFilled) return;
     setState('submitting');
     setError(null);
+    const payload = { ...ticket };
     try {
-      await postIntake(ticket);
+      await recordToSheet(payload, 'intake');
       setState('success');
-      onSubmitSuccess?.(ticket);
+      onSubmitSuccess?.(payload);
+      resetTicket();
+      setTicket(createDefaultTicket());
     } catch (err) {
       console.error(err);
+      enqueue({ type: 'intake', payload });
       setState('error');
-      setError(err instanceof Error ? err.message : '送信に失敗しました');
-      return;
+      setError(err instanceof Error ? `${err.message}（送信失敗のため端末に保存しました）` : '送信に失敗しました');
     }
   };
 
