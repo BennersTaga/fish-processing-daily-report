@@ -113,7 +113,11 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
       return;
     }
 
-    const payload = { ...report };
+    const toInventoryId = (id: string) => {
+      if (!id) return '';
+      return id.endsWith('P') ? id.slice(0, -1) + 'S' : id.endsWith('S') ? id : id + 'S';
+    };
+    const payload = { ...report, ticketId: toInventoryId(report.ticketId) };
     try {
       await recordToSheet(payload, 'inventory');
       const baseDate = payload.date ? new Date(payload.date) : new Date();
@@ -144,14 +148,6 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
       {state === 'error' && error ? <Alert variant="error" title="送信エラー" description={error} /> : null}
       {state === 'success' ? <Alert variant="success" title="送信が完了しました" /> : null}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <FormField label="チケットID" required>
-          <input
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
-            value={report.ticketId}
-            onChange={(e) => handleChange('ticketId')(e.target.value)}
-            required
-          />
-        </FormField>
         <FormField label="工場" required>
           <OptionSelect value={report.factory} onChange={(e) => handleChange('factory')(e.target.value)} options={options.factory} />
         </FormField>
