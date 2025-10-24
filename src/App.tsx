@@ -248,7 +248,6 @@ function InventoryPage({ master }: { master: Master }) {
       <SectionCard
         title="在庫報告を登録"
         description="仕入れチケットに紐づく在庫報告を送信します。"
-        actions={ticketId ? <span className="text-sm text-slate-500">チケットID: {ticketId}</span> : null}
       >
         {error ? <Alert variant="error" title="取得エラー" description={error} /> : null}
         {loading ? (
