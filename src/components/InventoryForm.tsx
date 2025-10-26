@@ -69,7 +69,13 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
 
   useEffect(() => {
     if (!initialValues) return;
-    setReport((prev) => ({ ...prev, ...initialValues }));
+    // Normalize dates to "YYYY-MM-DD" so <input type="date"> can display them
+    const normalized: Partial<InventoryReport> = { ...initialValues };
+    const src = initialValues.purchaseDate || (initialValues as any).date;
+    if (src) {
+      normalized.purchaseDate = formatDateInput(src);
+    }
+    setReport((prev) => ({ ...prev, ...normalized }));
   }, [initialValues, setReport]);
 
   const options = useMemo(
