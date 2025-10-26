@@ -65,6 +65,7 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
   const [error, setError] = useState<string | null>(null);
   const [parasitePhotos, setParasitePhotos] = useState<File[]>([]);
   const [foreignPhotos, setForeignPhotos] = useState<File[]>([]);
+  const lockedFromTicket = Boolean(initialValues?.ticketId);
 
   useEffect(() => {
     if (!initialValues) return;
@@ -149,15 +150,22 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
       {state === 'success' ? <Alert variant="success" title="送信が完了しました" /> : null}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <FormField label="工場" required>
-          <OptionSelect value={report.factory} onChange={(e) => handleChange('factory')(e.target.value)} options={options.factory} />
+          <OptionSelect
+            value={report.factory}
+            onChange={(e) => handleChange('factory')(e.target.value)}
+            options={options.factory}
+            disabled={lockedFromTicket}
+            className={lockedFromTicket ? 'bg-slate-100' : undefined}
+          />
         </FormField>
         <FormField label="仕入日" required>
           <input
             type="date"
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
+            className={`w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50 ${lockedFromTicket ? 'bg-slate-100' : ''}`}
             value={report.purchaseDate}
             onChange={(e) => handleChange('purchaseDate')(e.target.value)}
             required
+            disabled={lockedFromTicket}
           />
         </FormField>
         <FormField label="報告日" required>
@@ -173,7 +181,13 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
           <OptionSelect value={report.person} onChange={(e) => handleChange('person')(e.target.value)} options={options.person} />
         </FormField>
         <FormField label="魚種" required>
-          <OptionSelect value={report.species} onChange={(e) => handleChange('species')(e.target.value)} options={options.species} />
+          <OptionSelect
+            value={report.species}
+            onChange={(e) => handleChange('species')(e.target.value)}
+            options={options.species}
+            disabled={lockedFromTicket}
+            className={lockedFromTicket ? 'bg-slate-100' : undefined}
+          />
         </FormField>
         <FormField label="産地">
           <OptionSelect value={report.origin} onChange={(e) => handleChange('origin')(e.target.value)} options={options.origin} />
