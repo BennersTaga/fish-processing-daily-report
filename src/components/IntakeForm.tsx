@@ -52,7 +52,7 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
 
   const requiredFilled = useMemo(
     () =>
-      ['ticketId', 'factory', 'date', 'purchaseDate', 'person', 'species', 'supplier'].every((key) =>
+      ['factory', 'date', 'purchaseDate', 'person', 'species', 'supplier'].every((key) =>
         Boolean((ticket as Record<string, string>)[key]?.trim()),
       ),
     [ticket],
@@ -87,14 +87,6 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
       {state === 'error' && error ? <Alert variant="error" title="送信エラー" description={error} /> : null}
       {state === 'success' ? <Alert variant="success" title="送信が完了しました" /> : null}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <FormField label="チケットID" required>
-          <input
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
-            value={ticket.ticketId}
-            onChange={(e) => handleChange('ticketId')(e.target.value)}
-            required
-          />
-        </FormField>
         <FormField label="工場" required>
           <OptionSelect
             value={ticket.factory}
