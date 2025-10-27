@@ -43,6 +43,7 @@ export type ListItem = {
   species?: string;
   factory?: string;
   status?: string;
+  reportTime?: string;
 };
 
 export async function fetchList(month: string) {
