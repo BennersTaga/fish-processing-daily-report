@@ -9,6 +9,9 @@ import { UploadInput } from './UploadInput';
 import { FormActionBar } from './FormActionBar';
 import { Alert } from './Alert';
 import { formatDateInput, formatYmd } from '../lib/date';
+import { useNavigate } from '../react-router-dom';
+
+const DRIVE_FOLDER_ID = '1h3RCYDQrsNuBObQwKXsYM-HYtk8kE5R5';
 
 const createDefaultReport = (): InventoryReport => ({
   ticketId: '',
@@ -41,14 +44,21 @@ async function fileToBase64(file: File) {
   return btoa(binary);
 }
 
-async function uploadFiles(ticketId: string, label: string, files: File[]) {
+async function uploadFiles(
+  kind: '寄生虫' | '異物',
+  report: InventoryReport,
+  files: File[],
+) {
+  const ymd = formatYmd(report.purchaseDate ? new Date(report.purchaseDate) : new Date());
+  const base = `${kind}_${report.species}_${ymd}_${report.person}`;
   for (const file of files) {
     try {
       await uploadB64({
-        ticketId,
-        fileName: `${label}_${file.name}`,
+        ticketId: report.ticketId,
+        fileName: `${base}_${file.name}`,
         contentB64: await fileToBase64(file),
         mimeType: file.type || 'image/png',
+        folderId: DRIVE_FOLDER_ID,
       });
     } catch (err) {
       console.error('upload failed', err);
@@ -63,11 +73,10 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
   );
   const [state, setState] = useState<SubmissionState>('idle');
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const [parasitePhotos, setParasitePhotos] = useState<File[]>([]);
   const [foreignPhotos, setForeignPhotos] = useState<File[]>([]);
-  const [parasitePreviews, setParasitePreviews] = useState<string[]>([]);
-  const [foreignPreviews, setForeignPreviews] = useState<string[]>([]);
 
   const lockedFromTicket = Boolean(initialValues?.ticketId);
   const parasiteRequired = report.visual_parasite === '寄生虫あり';
@@ -116,19 +125,6 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
     }
   };
 
-  // プレビュー生成（メモリ解放もケア）
-  useEffect(() => {
-    const urls = parasitePhotos.map((file) => URL.createObjectURL(file));
-    setParasitePreviews(urls);
-    return () => { urls.forEach((url) => URL.revokeObjectURL(url)); };
-  }, [parasitePhotos]);
-
-  useEffect(() => {
-    const urls = foreignPhotos.map((file) => URL.createObjectURL(file));
-    setForeignPreviews(urls);
-    return () => { urls.forEach((url) => URL.revokeObjectURL(url)); };
-  }, [foreignPhotos]);
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!requiredFilled) return;
@@ -158,15 +154,11 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
     try {
       await recordToSheet(payload, 'inventory');
 
-      const baseDate = payload.date ? new Date(payload.date) : new Date();
-      const yyyymmdd = formatYmd(baseDate);
-      const ticketId = payload.ticketId;
-
       if (parasitePhotos.length) {
-        await uploadFiles(ticketId, `寄生虫_${yyyymmdd}`, parasitePhotos);
+        await uploadFiles('寄生虫', payload, parasitePhotos);
       }
       if (foreignPhotos.length) {
-        await uploadFiles(ticketId, `異物_${yyyymmdd}`, foreignPhotos);
+        await uploadFiles('異物', payload, foreignPhotos);
       }
 
       setState('success');
@@ -175,6 +167,7 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
       setReport(createDefaultReport());
       setParasitePhotos([]);
       setForeignPhotos([]);
+      navigate('/', { replace: true });
     } catch (err) {
       console.error(err);
       enqueue({ type: 'inventory', payload });
@@ -278,19 +271,8 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
             files={parasitePhotos}
             onFilesChange={setParasitePhotos}
             disabled={!parasiteRequired}
+            maxFiles={5}
           />
-          {parasitePreviews.length > 0 ? (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {parasitePreviews.map((src, index) => (
-                <img
-                  key={src}
-                  src={src}
-                  alt={`寄生虫の写真${index + 1}`}
-                  className="h-20 w-20 rounded border border-slate-200 object-cover"
-                />
-              ))}
-            </div>
-          ) : null}
         </FormField>
 
         <FormField label="異物の写真">
@@ -299,19 +281,8 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
             files={foreignPhotos}
             onFilesChange={setForeignPhotos}
             disabled={!foreignRequired}
+            maxFiles={5}
           />
-          {foreignPreviews.length > 0 ? (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {foreignPreviews.map((src, index) => (
-                <img
-                  key={src}
-                  src={src}
-                  alt={`異物の写真${index + 1}`}
-                  className="h-20 w-20 rounded border border-slate-200 object-cover"
-                />
-              ))}
-            </div>
-          ) : null}
         </FormField>
       </div>
 

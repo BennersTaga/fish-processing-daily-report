@@ -8,6 +8,7 @@ import { OptionSelect } from './OptionSelect';
 import { FormActionBar } from './FormActionBar';
 import { Alert } from './Alert';
 import { formatDateInput } from '../lib/date';
+import { useNavigate } from '../react-router-dom';
 
 const createDefaultTicket = (): IntakeTicket => ({
   ticketId: '',
@@ -36,6 +37,7 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
   );
   const [state, setState] = useState<SubmissionState>('idle');
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const options = useMemo(
     () => ({
@@ -74,6 +76,7 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
       onSubmitSuccess?.(payload);
       resetTicket();
       setTicket(createDefaultTicket());
+      navigate('/', { replace: true });
     } catch (err) {
       console.error(err);
       enqueue({ type: 'intake', payload });

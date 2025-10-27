@@ -14,23 +14,17 @@ import { InventoryReport, Master } from './types';
 
 const LEGACY_KEYS = ['fish-demo.intakeSubmissions', 'fish-demo.inventoryReports', 'fish-demo.master'];
 
-/** yyyy-MM-dd HH:mm */
-function formatYmdHm(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  const hh = String(date.getHours()).padStart(2, '0');
-  const mm = String(date.getMinutes()).padStart(2, '0');
-  return `${y}-${m}-${d} ${hh}:${mm}`;
-}
-
-/** item.date を短く表示（ISOは yyyy-MM-dd HH:mm、それ以外はそのまま） */
-function prettyDate(v: string | Date | undefined): string {
+function formatYmdOnly(v: string | Date | undefined): string {
   if (!v) return '—';
-  if (v instanceof Date) return formatYmdHm(v);
-  if (/^\d{4}-\d{2}-\d{2}T/.test(v)) return formatYmdHm(new Date(v));
-  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-  return v;
+  const d = v instanceof Date ? v : (/^\d{4}-\d{2}-\d{2}T/.test(String(v)) ? new Date(String(v)) : null);
+  if (d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  }
+  const s = String(v);
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : s;
 }
 
 function getHashQueryString() {
@@ -132,6 +126,7 @@ function HomePage() {
             <thead className="bg-slate-50">
               <tr>
                 <th className="px-4 py-2 text-left font-semibold text-slate-700">仕入日</th>
+                <th className="px-4 py-2 text-left font-semibold text-slate-700">報告時刻</th>
                 <th className="px-4 py-2 text-left font-semibold text-slate-700">魚種</th>
                 <th className="px-4 py-2 text-left font-semibold text-slate-700">工場</th>
                 <th className="px-4 py-2 text-left font-semibold text-slate-700">ステータス</th>
@@ -141,7 +136,7 @@ function HomePage() {
             <tbody className="divide-y divide-slate-200 bg-white">
               {items.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-6 text-center text-slate-500" colSpan={5}>
+                  <td className="px-4 py-6 text-center text-slate-500" colSpan={6}>
                     この月のデータはありません
                   </td>
                 </tr>
@@ -150,7 +145,8 @@ function HomePage() {
                 const done = item.status === '報告完了';
                 return (
                   <tr key={item.ticketId} className={done ? 'opacity-60' : undefined}>
-                    <td className="px-4 py-2">{prettyDate(item.date)}</td>
+                    <td className="px-4 py-2">{formatYmdOnly(item.date)}</td>
+                    <td className="px-4 py-2">{item.reportTime || '—'}</td>
                     <td className="px-4 py-2">{item.species || '—'}</td>
                     <td className="px-4 py-2">{item.factory || '—'}</td>
                     <td className="px-4 py-2">{item.status || '—'}</td>
