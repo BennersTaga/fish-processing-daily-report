@@ -7,9 +7,17 @@ export type UploadInputProps = {
   onFilesChange: (files: File[]) => void;
   accept?: string;
   capture?: string;
+  disabled?: boolean;
 };
 
-export function UploadInput({ label, files, onFilesChange, accept = 'image/*', capture = 'environment' }: UploadInputProps) {
+export function UploadInput({
+  label,
+  files,
+  onFilesChange,
+  accept = 'image/*',
+  capture = 'environment',
+  disabled = false,
+}: UploadInputProps) {
   const names = useMemo(() => files.map((file) => file.name).join(', '), [files]);
 
   return (
@@ -17,7 +25,9 @@ export function UploadInput({ label, files, onFilesChange, accept = 'image/*', c
       <Button
         type="button"
         variant="secondary"
+        disabled={disabled}
         onClick={() => {
+          if (disabled) return;
           const input = document.createElement('input');
           input.type = 'file';
           input.multiple = true;

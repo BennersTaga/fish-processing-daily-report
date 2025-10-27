@@ -107,11 +107,77 @@ function readHeaders(sh) {
   return sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
 }
 
+var FACTORY_CODE = {
+  '羽野': 'HN',
+  '大道': 'OD',
+  '原田': 'HD',
+};
+
+function zero(n, len) {
+  return ('000000' + n).slice(-len);
+}
+
+function yyyymmddFrom(row) {
+  var raw = String((row && (row.purchaseDate || row.date)) || '');
+  if (!raw) return Utilities.formatDate(new Date(), TZ, 'yyyyMMdd');
+  return raw.replace(/[^0-9]/g, '').slice(0, 8);
+}
+
+function factoryAbbr(name) {
+  var ab = FACTORY_CODE[name] || 'XX';
+  return String(ab).toUpperCase();
+}
+
+function nextSeq(yyyymmdd, abbr) {
+  var sh = getDbSheet();
+  var last = sh.getLastRow();
+  if (last < 2) return 1;
+  var headers = readHeaders(sh);
+  var idx = {};
+  headers.forEach(function (h, i) {
+    idx[h] = i;
+  });
+  var vals = sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues();
+  var re = new RegExp('^' + yyyymmdd + abbr + '(\\d{3})[PS]$');
+  var max = 0;
+  for (var i = 0; i < vals.length; i++) {
+    var id = String((vals[i][idx['ticketId']] || ''));
+    var m = id.match(re);
+    if (m) {
+      var n = Number(m[1] || 0);
+      if (n > max) max = n;
+    }
+  }
+  return max + 1;
+}
+
+function createTicketIdForIntake(row) {
+  var y = yyyymmddFrom(row);
+  var ab = factoryAbbr(row && row.factory);
+  var n = nextSeq(y, ab);
+  var root = y + ab + zero(n, 3);
+  return root + 'P';
+}
+
 function appendAction(row, type) {
   const sh = getDbSheet();
   const headers = readHeaders(sh);
+  if (type === 'intake' && !row.ticketId) {
+    row.ticketId = createTicketIdForIntake(row);
+  }
+
   if (row.ticketId && findRowIndexByTicketId(row.ticketId) > 0) {
-    return { skipped: true, reason: 'duplicate ticketId', ticketId: row.ticketId };
+    if (type === 'intake') {
+      var y = yyyymmddFrom(row);
+      var ab = factoryAbbr(row && row.factory);
+      var n = nextSeq(y, ab);
+      row.ticketId = y + ab + zero(n, 3) + 'P';
+      if (findRowIndexByTicketId(row.ticketId) > 0) {
+        return { skipped: true, reason: 'duplicate ticketId', ticketId: row.ticketId };
+      }
+    } else {
+      return { skipped: true, reason: 'duplicate ticketId', ticketId: row.ticketId };
+    }
   }
   const rec = headers.map(function (h) {
     if (h === 'timestamp') return row.timestamp || nowStr();
