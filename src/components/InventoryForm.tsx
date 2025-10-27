@@ -63,10 +63,12 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
   );
   const [state, setState] = useState<SubmissionState>('idle');
   const [error, setError] = useState<string | null>(null);
+
   const [parasitePhotos, setParasitePhotos] = useState<File[]>([]);
   const [foreignPhotos, setForeignPhotos] = useState<File[]>([]);
   const [parasitePreviews, setParasitePreviews] = useState<string[]>([]);
   const [foreignPreviews, setForeignPreviews] = useState<string[]>([]);
+
   const lockedFromTicket = Boolean(initialValues?.ticketId);
   const parasiteRequired = report.visual_parasite === '寄生虫あり';
   const foreignRequired = report.visual_foreign === '異物あり';
@@ -105,6 +107,7 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
 
   const handleChange = (key: keyof InventoryReport) => (value: string) => {
     setReport((prev) => ({ ...prev, [key]: value }));
+    // 選択が「あり」以外になったらファイルをクリア
     if (key === 'visual_parasite' && value !== '寄生虫あり') {
       setParasitePhotos([]);
     }
@@ -113,20 +116,17 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
     }
   };
 
+  // プレビュー生成（メモリ解放もケア）
   useEffect(() => {
     const urls = parasitePhotos.map((file) => URL.createObjectURL(file));
     setParasitePreviews(urls);
-    return () => {
-      urls.forEach((url) => URL.revokeObjectURL(url));
-    };
+    return () => { urls.forEach((url) => URL.revokeObjectURL(url)); };
   }, [parasitePhotos]);
 
   useEffect(() => {
     const urls = foreignPhotos.map((file) => URL.createObjectURL(file));
     setForeignPreviews(urls);
-    return () => {
-      urls.forEach((url) => URL.revokeObjectURL(url));
-    };
+    return () => { urls.forEach((url) => URL.revokeObjectURL(url)); };
   }, [foreignPhotos]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -135,6 +135,8 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
 
     setState('submitting');
     setError(null);
+
+    // 「あり」のときは写真必須
     if (parasiteRequired && parasitePhotos.length === 0) {
       setState('error');
       setError('寄生虫あり の場合は写真が1枚以上必須です');
@@ -146,22 +148,27 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
       return;
     }
 
+    // intake の P → inventory の S に変換
     const toInventoryId = (id: string) => {
       if (!id) return '';
       return id.endsWith('P') ? id.slice(0, -1) + 'S' : id.endsWith('S') ? id : id + 'S';
     };
     const payload = { ...report, ticketId: toInventoryId(report.ticketId) };
+
     try {
       await recordToSheet(payload, 'inventory');
+
       const baseDate = payload.date ? new Date(payload.date) : new Date();
       const yyyymmdd = formatYmd(baseDate);
       const ticketId = payload.ticketId;
+
       if (parasitePhotos.length) {
         await uploadFiles(ticketId, `寄生虫_${yyyymmdd}`, parasitePhotos);
       }
       if (foreignPhotos.length) {
         await uploadFiles(ticketId, `異物_${yyyymmdd}`, foreignPhotos);
       }
+
       setState('success');
       onSubmitSuccess?.(payload);
       resetReport();
@@ -180,6 +187,7 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
     <form className="space-y-6" onSubmit={handleSubmit}>
       {state === 'error' && error ? <Alert variant="error" title="送信エラー" description={error} /> : null}
       {state === 'success' ? <Alert variant="success" title="送信が完了しました" /> : null}
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <FormField label="工場" required>
           <OptionSelect
@@ -190,6 +198,7 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
             className={lockedFromTicket ? 'bg-slate-100' : undefined}
           />
         </FormField>
+
         <FormField label="仕入日" required>
           <input
             type="date"
@@ -200,6 +209,7 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
             disabled={lockedFromTicket}
           />
         </FormField>
+
         <FormField label="報告日" required>
           <input
             type="date"
@@ -209,9 +219,11 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
             required
           />
         </FormField>
+
         <FormField label="担当者" required>
           <OptionSelect value={report.person} onChange={(e) => handleChange('person')(e.target.value)} options={options.person} />
         </FormField>
+
         <FormField label="魚種" required>
           <OptionSelect
             value={report.species}
@@ -221,12 +233,15 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
             className={lockedFromTicket ? 'bg-slate-100' : undefined}
           />
         </FormField>
+
         <FormField label="産地">
           <OptionSelect value={report.origin} onChange={(e) => handleChange('origin')(e.target.value)} options={options.origin} />
         </FormField>
+
         <FormField label="状態">
           <OptionSelect value={report.state} onChange={(e) => handleChange('state')(e.target.value)} options={options.state} />
         </FormField>
+
         <FormField label="重量(kg)" required>
           <input
             type="number"
@@ -238,6 +253,7 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
             required
           />
         </FormField>
+
         <FormField label="寄生虫確認">
           <OptionSelect
             value={report.visual_parasite}
@@ -245,6 +261,7 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
             options={options.visual_parasite}
           />
         </FormField>
+
         <FormField label="異物確認">
           <OptionSelect
             value={report.visual_foreign}
@@ -253,6 +270,7 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
           />
         </FormField>
       </div>
+
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <FormField label="寄生虫/病変の写真">
           <UploadInput
@@ -274,6 +292,7 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
             </div>
           ) : null}
         </FormField>
+
         <FormField label="異物の写真">
           <UploadInput
             label="異物の写真を選択"
@@ -295,6 +314,7 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
           ) : null}
         </FormField>
       </div>
+
       <FormActionBar
         onCancel={() => {
           resetReport();
