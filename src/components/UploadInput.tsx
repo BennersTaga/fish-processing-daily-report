@@ -35,15 +35,32 @@ export function UploadInput({
     if (disabled) return;
     const input = document.createElement('input');
     input.type = 'file';
-    input.multiple = true;
+    input.multiple = true; // allow picking multiple at once
     input.accept = accept;
     if (capture) input.setAttribute('capture', capture);
+
     input.onchange = () => {
       if (!input.files) return;
+
       const selected = Array.from(input.files);
-      const limited = selected.slice(0, maxFiles);
+      // Append to current files, then cap by maxFiles and de-duplicate
+      const merged = [...files, ...selected];
+
+      // de-dup by name+size+lastModified to keep order of first occurrence
+      const seen = new Set<string>();
+      const unique: File[] = [];
+      for (const f of merged) {
+        const k = `${f.name}__${f.size}__${(f as any).lastModified ?? 0}`;
+        if (!seen.has(k)) {
+          seen.add(k);
+          unique.push(f);
+        }
+      }
+
+      const limited = unique.slice(0, maxFiles);
       onFilesChange(limited);
     };
+
     input.click();
   };
 
@@ -75,7 +92,7 @@ export function UploadInput({
       {files.length > 0 && (
         <ul className="list-disc pl-5 text-xs text-slate-600">
           {files.map((f) => (
-            <li key={f.name}>{f.name}</li>
+            <li key={`${f.name}-${f.size}-${(f as any).lastModified ?? 0}`}>{f.name}</li>
           ))}
         </ul>
       )}
