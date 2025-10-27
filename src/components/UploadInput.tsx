@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Button } from './Button';
 
 export type UploadInputProps = {
@@ -8,6 +8,7 @@ export type UploadInputProps = {
   accept?: string;
   capture?: string;
   disabled?: boolean;
+  maxFiles?: number; // default 5
 };
 
 export function UploadInput({
@@ -17,34 +18,67 @@ export function UploadInput({
   accept = 'image/*',
   capture = 'environment',
   disabled = false,
+  maxFiles = 5,
 }: UploadInputProps) {
-  const names = useMemo(() => files.map((file) => file.name).join(', '), [files]);
+  const previews = useMemo(
+    () => files.map((f) => ({ name: f.name, url: URL.createObjectURL(f) })),
+    [files]
+  );
+
+  useEffect(() => {
+    return () => {
+      previews.forEach((p) => URL.revokeObjectURL(p.url));
+    };
+  }, [previews]);
+
+  const pick = () => {
+    if (disabled) return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = accept;
+    if (capture) input.setAttribute('capture', capture);
+    input.onchange = () => {
+      if (!input.files) return;
+      const selected = Array.from(input.files);
+      const limited = selected.slice(0, maxFiles);
+      onFilesChange(limited);
+    };
+    input.click();
+  };
 
   return (
     <div className="flex flex-col gap-2">
-      <Button
-        type="button"
-        variant="secondary"
-        disabled={disabled}
-        onClick={() => {
-          if (disabled) return;
-          const input = document.createElement('input');
-          input.type = 'file';
-          input.multiple = true;
-          input.accept = accept;
-          if (capture) {
-            input.setAttribute('capture', capture);
-          }
-          input.onchange = () => {
-            if (!input.files) return;
-            onFilesChange(Array.from(input.files));
-          };
-          input.click();
-        }}
-      >
+      <Button type="button" variant="secondary" disabled={disabled} onClick={pick}>
         {label}
       </Button>
-      <p className="text-xs text-slate-500">{names || '選択されたファイルはありません。'}</p>
+
+      {disabled ? (
+        <p className="text-xs text-slate-400">※「あり」を選択すると写真を選べます</p>
+      ) : (
+        <p className="text-xs text-slate-500">
+          {files.length ? `選択中: ${files.length}枚（最大${maxFiles}枚）` : '選択されたファイルはありません。'}
+        </p>
+      )}
+
+      {previews.length > 0 && (
+        <div className="grid grid-cols-3 gap-2 md:grid-cols-4">
+          {previews.map((p) => (
+            <div key={p.url} className="overflow-hidden rounded border border-slate-200">
+              <img src={p.url} alt={p.name} className="h-24 w-full object-cover" />
+              <div className="truncate px-2 py-1 text-[10px] text-slate-600">{p.name}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {files.length > 0 && (
+        <ul className="list-disc pl-5 text-xs text-slate-600">
+          {files.map((f) => (
+            <li key={f.name}>{f.name}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
