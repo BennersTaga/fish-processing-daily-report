@@ -307,13 +307,24 @@ function findRowIndexByTicketId(id) {
   return -1;
 }
 
+const DEFAULT_UPLOAD_FOLDER_ID = '1h3RCYDQrsNuBObQwKXsYM-HYtk8kE5R5';
+
+function _sanitizeName_(s) {
+  return String(s || '')
+    .replace(/[\\/:*?"<>|]+/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function uploadB64(p) {
   if (!p || !p.contentB64) throw new Error('contentB64 required');
-  const name = p.fileName || (p.ticketId ? p.ticketId + '.png' : 'upload_' + Date.now() + '.png');
-  const mime = p.mimeType || 'image/png';
-  const blob = Utilities.newBlob(Utilities.base64Decode(p.contentB64), mime, name);
-  const file = DriveApp.getRootFolder().createFile(blob);
-  return { id: file.getId(), url: file.getUrl(), name: file.getName() };
+  var name = _sanitizeName_(p.fileName || (p.ticketId ? p.ticketId + '.png' : 'upload_' + Date.now() + '.png'));
+  var mime = p.mimeType || 'image/png';
+  var folderId = p.folderId || DEFAULT_UPLOAD_FOLDER_ID;
+  var folder = folderId ? DriveApp.getFolderById(folderId) : DriveApp.getRootFolder();
+  var blob = Utilities.newBlob(Utilities.base64Decode(String(p.contentB64)), mime, name);
+  var file = folder.createFile(blob);
+  return { id: file.getId(), url: file.getUrl(), name: file.getName(), folderId: folderId };
 }
 
 function audit(action, ticketId, origin) {

@@ -59,6 +59,7 @@ export async function uploadB64(payload: {
   fileName?: string;
   contentB64: string;
   mimeType?: string;
+  folderId?: string;
   apiKey?: string;
 }) {
   return post<{ ok: true; result: unknown }>({ action: 'uploadB64' }, payload);
