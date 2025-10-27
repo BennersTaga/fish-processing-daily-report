@@ -9,6 +9,7 @@ import { UploadInput } from './UploadInput';
 import { FormActionBar } from './FormActionBar';
 import { Alert } from './Alert';
 import { formatDateInput, formatYmd } from '../lib/date';
+import { useNavigate } from '../react-router-dom';
 
 const createDefaultReport = (): InventoryReport => ({
   ticketId: '',
@@ -63,6 +64,7 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
   );
   const [state, setState] = useState<SubmissionState>('idle');
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const [parasitePhotos, setParasitePhotos] = useState<File[]>([]);
   const [foreignPhotos, setForeignPhotos] = useState<File[]>([]);
@@ -175,6 +177,7 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
       setReport(createDefaultReport());
       setParasitePhotos([]);
       setForeignPhotos([]);
+      navigate('/', { replace: true });
     } catch (err) {
       console.error(err);
       enqueue({ type: 'inventory', payload });
