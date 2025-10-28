@@ -68,3 +68,7 @@ export async function uploadB64(payload: {
 export async function fetchTicket(id: string) {
   return get<{ ok: true; item: Record<string, string> | null }>({ action: 'ticket', id });
 }
+
+export async function closeTicket(ticketId: string) {
+  return post<{ ok: true }>({ action: 'close' }, { ticketId });
+}

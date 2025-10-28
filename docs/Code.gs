@@ -27,6 +27,14 @@ function doPost(e) {
       audit('uploadB64', p.ticketId, origin);
       return respond({ ok: true, result: r });
     }
+    // 手動クローズ（在庫報告不要として閉じる）
+    if (action === 'close') {
+      const b = parseBody(e);
+      if (!b.ticketId) return respond({ ok: false, error: 'ticketId required' });
+      const r = appendAction({ ticketId: b.ticketId }, 'closed');
+      audit('close', b.ticketId, origin);
+      return respond({ ok: true, result: r });
+    }
     if (action === 'intake' || action === 'inventory') {
       const b = parseBody(e);
       const r = appendAction(b, action);
@@ -124,6 +132,7 @@ function ymOf_(v) {
   return String(v || '').slice(0, 7);
 }
 
+// ===== Ticket ID generation =====
 var FACTORY_CODE = {
   '羽野': 'HN',
   '大道': 'OD',
@@ -176,15 +185,26 @@ function createTicketIdForIntake(row) {
   return root + 'P';
 }
 
+// ===== Core append =====
 function appendAction(row, type) {
   const sh = getDbSheet();
   const headers = readHeaders(sh);
-  if (type === 'intake' && !row.ticketId) {
+  const t = String(type || row.type || '').toLowerCase();
+
+  // intake：サーバで採番
+  if (t === 'intake' && !row.ticketId) {
     row.ticketId = createTicketIdForIntake(row);
   }
 
-  if (row.ticketId && findRowIndexByTicketId(row.ticketId) > 0) {
-    if (type === 'intake') {
+  // close は必ず ticketId 必須
+  if (t === 'closed' && !row.ticketId) {
+    throw new Error('close requires ticketId');
+  }
+
+  // 既存 ticketId 重複の取り扱い
+  const existingIndex = row.ticketId ? findRowIndexByTicketId(row.ticketId) : -1;
+  if (existingIndex > 0) {
+    if (t === 'intake') {
       var y = yyyymmddFrom(row);
       var ab = factoryAbbr(row && row.factory);
       var n = nextSeq(y, ab);
@@ -192,36 +212,37 @@ function appendAction(row, type) {
       if (findRowIndexByTicketId(row.ticketId) > 0) {
         return { skipped: true, reason: 'duplicate ticketId', ticketId: row.ticketId };
       }
-    } else {
+    } else if (t !== 'closed') {
       return { skipped: true, reason: 'duplicate ticketId', ticketId: row.ticketId };
     }
   }
+
   const rec = headers.map(function (h) {
     if (h === 'timestamp') return row.timestamp || nowStr();
-    if (h === 'type') return type || row.type || '';
+    if (h === 'type') return t || '';
     return row[h] != null ? row[h] : '';
   });
   sh.appendRow(rec);
   return { appended: true, ticketId: row.ticketId };
 }
 
+// ===== Query (Home list) =====
 function listMonth(month) {
   const sh = getDbSheet();
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
   const headers = readHeaders(sh);
-  const idx = Object.fromEntries(headers.map(function (h, i) {
-    return [h, i];
-  }));
+  const idx = Object.fromEntries(headers.map(function (h, i) { return [h, i]; }));
   const vals = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
 
-  const map = {};
+  const map = {};   // baseId -> 集約
   const order = [];
 
   for (let i = 0; i < vals.length; i++) {
     const r = vals[i];
     const base = baseTicketId_(r[idx['ticketId']]);
     if (!base) continue;
+
     if (!map[base]) {
       map[base] = {
         firstDate: r[idx['date']] || '',
@@ -231,17 +252,20 @@ function listMonth(month) {
         species: r[idx['species']] || '',
         factory: r[idx['factory']] || '',
         hasInventory: false,
+        closed: false,
       };
       order.push(base);
     }
+
     const t = String(r[idx['type']] || '').toLowerCase();
     if (t === 'intake') {
       map[base].intakeDate = r[idx['date']];
       map[base].intakeTs = r[idx['timestamp']];
       map[base].species = r[idx['species']] || map[base].species;
       map[base].factory = r[idx['factory']] || map[base].factory;
-    } else if (t === 'inventory') {
+    } else if (t === 'inventory' || t === 'closed') {
       map[base].hasInventory = true;
+      if (t === 'closed') map[base].closed = true;
     }
   }
 
@@ -252,13 +276,14 @@ function listMonth(month) {
     if (month && ymOf_(date) !== month) continue;
 
     const ts = entry.intakeTs != null ? entry.intakeTs : entry.firstTs;
+
     items.push({
       date: date,
       type: entry.hasInventory ? 'inventory' : 'intake',
       ticketId: k + 'P',
       species: entry.species,
       factory: entry.factory,
-      status: entry.hasInventory ? '報告完了' : '仕入',
+      status: entry.closed ? '報告済' : (entry.hasInventory ? '報告完了' : '仕入'),
       reportTime: hhmmOf_(ts),
     });
   }
@@ -272,16 +297,12 @@ function findByTicketId(id) {
   if (lastRow < 2) return null;
   const headers = readHeaders(sh);
   const idx = {};
-  headers.forEach(function (h, i) {
-    idx[h] = i;
-  });
+  headers.forEach(function (h, i) { idx[h] = i; });
   const vals = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
   for (var i = 0; i < vals.length; i++) {
     if (vals[i][idx['ticketId']] === id) {
       var result = {};
-      headers.forEach(function (h, col) {
-        result[h] = vals[i][col];
-      });
+      headers.forEach(function (h, col) { result[h] = vals[i][col]; });
       return result;
     }
   }
@@ -295,18 +316,15 @@ function findRowIndexByTicketId(id) {
   if (lastRow < 2) return -1;
   const headers = readHeaders(sh);
   const idx = {};
-  headers.forEach(function (h, i) {
-    idx[h] = i;
-  });
+  headers.forEach(function (h, i) { idx[h] = i; });
   const vals = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
   for (var i = 0; i < vals.length; i++) {
-    if (vals[i][idx['ticketId']] === id) {
-      return i + 2;
-    }
+    if (vals[i][idx['ticketId']] === id) return i + 2;
   }
   return -1;
 }
 
+// ===== Upload =====
 const DEFAULT_UPLOAD_FOLDER_ID = '1h3RCYDQrsNuBObQwKXsYM-HYtk8kE5R5';
 
 function _sanitizeName_(s) {
@@ -327,11 +345,6 @@ function uploadB64(p) {
   return { id: file.getId(), url: file.getUrl(), name: file.getName(), folderId: folderId };
 }
 
-function audit(action, ticketId, origin) {
-  // 任意：監査ログを別シートに出す場合はここに実装
-}
-
-function loadMaster() {
-  // 任意：マスター情報を別シートから読み込む場合に実装
-  return {};
-}
+// ===== Optional stubs =====
+function audit(_action, _ticketId, _origin) { /* no-op */ }
+function loadMaster() { return {}; }
