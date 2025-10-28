@@ -7,30 +7,24 @@ import { Button } from './components/Button';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { Alert } from './components/Alert';
 import { useMasterOptions } from './hooks/useMasterOptions';
-import { fetchList, fetchTicket, formatMonth } from './lib/api';
+import { closeTicket, fetchList, fetchTicket, formatMonth } from './lib/api';
 import type { ListItem } from './lib/api';
 import { syncPending } from './lib/offlineQueue';
 import { InventoryReport, Master } from './types';
 
 const LEGACY_KEYS = ['fish-demo.intakeSubmissions', 'fish-demo.inventoryReports', 'fish-demo.master'];
 
-/** yyyy-MM-dd HH:mm */
-function formatYmdHm(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  const hh = String(date.getHours()).padStart(2, '0');
-  const mm = String(date.getMinutes()).padStart(2, '0');
-  return `${y}-${m}-${d} ${hh}:${mm}`;
-}
-
-/** item.date を短く表示（ISOは yyyy-MM-dd HH:mm、それ以外はそのまま） */
-function prettyDate(v: string | Date | undefined): string {
+function formatYmdOnly(v: string | Date | undefined): string {
   if (!v) return '—';
-  if (v instanceof Date) return formatYmdHm(v);
-  if (/^\d{4}-\d{2}-\d{2}T/.test(v)) return formatYmdHm(new Date(v));
-  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-  return v;
+  const d = v instanceof Date ? v : (/^\d{4}-\d{2}-\d{2}T/.test(String(v)) ? new Date(String(v)) : null);
+  if (d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  }
+  const s = String(v);
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : s;
 }
 
 function getHashQueryString() {
@@ -73,6 +67,7 @@ function HomePage() {
   const [items, setItems] = useState<ListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blocking, setBlocking] = useState(false);
   const navigate = useNavigate();
 
   const load = useCallback(async () => {
@@ -90,6 +85,32 @@ function HomePage() {
       setLoading(false);
     }
   }, [month]);
+
+  const reload = useCallback(async () => {
+    await load();
+  }, [load]);
+
+  const handleClose = useCallback(
+    async (id: string) => {
+      if (!id || blocking) return;
+      if (
+        !window.confirm(
+          'このチケットを「報告済」にしますか？\n（在庫報告は不要としてクローズします）'
+        )
+      )
+        return;
+      try {
+        setBlocking(true);
+        await closeTicket(id);
+        await reload();
+      } catch (e) {
+        alert('クローズに失敗しました。通信状態をご確認ください。');
+      } finally {
+        setBlocking(false);
+      }
+    },
+    [reload, blocking]
+  );
 
   useEffect(() => {
     // 旧キーの掃除（幽霊データ対策）
@@ -112,69 +133,111 @@ function HomePage() {
               className="rounded-md border border-slate-300 px-3 py-1 text-sm shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
               value={month}
               onChange={(event) => setMonth(event.target.value)}
+              disabled={blocking}
             />
-            <Button type="button" variant="secondary" onClick={() => void load()} disabled={loading}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void reload()}
+              disabled={loading || blocking}
+            >
               {loading ? '読込中…' : '再読込'}
             </Button>
-            <Button type="button" onClick={() => navigate('/intake')}>仕入れを報告する</Button>
+            <Button type="button" onClick={() => navigate('/intake')} disabled={blocking}>
+              仕入れを報告する
+            </Button>
           </div>
         }
       >
-        {error ? <Alert variant="error" description={`取得エラー：${error}`} /> : null}
-        {loading ? (
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <LoadingSpinner />
-            読み込み中です…
-          </div>
-        ) : null}
-        <div className="overflow-hidden rounded-lg border border-slate-200">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-4 py-2 text-left font-semibold text-slate-700">仕入日</th>
-                <th className="px-4 py-2 text-left font-semibold text-slate-700">魚種</th>
-                <th className="px-4 py-2 text-left font-semibold text-slate-700">工場</th>
-                <th className="px-4 py-2 text-left font-semibold text-slate-700">ステータス</th>
-                <th className="px-4 py-2 text-left font-semibold text-slate-700">操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 bg-white">
-              {items.length === 0 ? (
+        <div className={blocking ? 'pointer-events-none select-none opacity-90' : undefined}>
+          {error ? <Alert variant="error" description={`取得エラー：${error}`} /> : null}
+          {loading ? (
+            <div className="flex items-center gap-2 text-sm text-slate-500">
+              <LoadingSpinner />
+              読み込み中です…
+            </div>
+          ) : null}
+          <div className="overflow-hidden rounded-lg border border-slate-200">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50">
                 <tr>
-                  <td className="px-4 py-6 text-center text-slate-500" colSpan={5}>
-                    この月のデータはありません
-                  </td>
+                  <th className="px-4 py-2 text-left font-semibold text-slate-700">仕入日</th>
+                  <th className="px-4 py-2 text-left font-semibold text-slate-700">報告時刻</th>
+                  <th className="px-4 py-2 text-left font-semibold text-slate-700">魚種</th>
+                  <th className="px-4 py-2 text-left font-semibold text-slate-700">工場</th>
+                  <th className="px-4 py-2 text-left font-semibold text-slate-700">ステータス</th>
+                  <th className="px-4 py-2 text-left font-semibold text-slate-700">操作</th>
                 </tr>
-              ) : null}
-              {items.map((item) => {
-                const done = item.status === '報告完了';
-                return (
-                  <tr key={item.ticketId} className={done ? 'opacity-60' : undefined}>
-                    <td className="px-4 py-2">{prettyDate(item.date)}</td>
-                    <td className="px-4 py-2">{item.species || '—'}</td>
-                    <td className="px-4 py-2">{item.factory || '—'}</td>
-                    <td className="px-4 py-2">{item.status || '—'}</td>
-                    <td className="px-4 py-2">
-                      {done ? (
-                        <span className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1 text-xs text-slate-400">
-                          在庫報告済み
-                        </span>
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          onClick={() => navigate(`/inventory?ticketId=${encodeURIComponent(item.ticketId)}`)}
-                        >
-                          在庫報告を開く
-                        </Button>
-                      )}
+              </thead>
+              <tbody className="divide-y divide-slate-200 bg-white">
+                {items.length === 0 ? (
+                  <tr>
+                    <td className="px-4 py-6 text-center text-slate-500" colSpan={6}>
+                      この月のデータはありません
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ) : null}
+                {items.map((item) => {
+                  const done = item.status !== '仕入';
+                  const canOpenInventory = item.status === '仕入';
+                  return (
+                    <tr key={item.ticketId} className={done ? 'opacity-60' : undefined}>
+                      <td className="px-4 py-2">{formatYmdOnly(item.date)}</td>
+                      <td className="px-4 py-2">{item.reportTime || '—'}</td>
+                      <td className="px-4 py-2">{item.species || '—'}</td>
+                      <td className="px-4 py-2">{item.factory || '—'}</td>
+                      <td className="px-4 py-2">
+                        {item.status === '仕入' ? (
+                          <button
+                            type="button"
+                            className="text-primary underline decoration-dotted hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={() => void handleClose(item.ticketId)}
+                            title="在庫報告不要としてクローズ（報告済）"
+                            disabled={blocking}
+                          >
+                            仕入
+                          </button>
+                        ) : (
+                          item.status || '—'
+                        )}
+                      </td>
+                      <td className="px-4 py-2">
+                        {done ? (
+                          <span className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1 text-xs text-slate-400">
+                            在庫報告済み
+                          </span>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            disabled={!canOpenInventory || blocking}
+                            onClick={() =>
+                              navigate(`/inventory?ticketId=${encodeURIComponent(item.ticketId)}`)
+                            }
+                          >
+                            在庫報告を開く
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
+        {blocking && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[1px]"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div className="flex items-center gap-2 rounded-md bg-white/90 px-4 py-3 text-sm text-slate-700 shadow">
+              <LoadingSpinner />
+              処理中です…
+            </div>
+          </div>
+        )}
       </SectionCard>
     </div>
   );
