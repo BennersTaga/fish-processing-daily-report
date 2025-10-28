@@ -35,7 +35,7 @@ export function UploadInput({
     if (disabled) return;
     const input = document.createElement('input');
     input.type = 'file';
-    input.multiple = true;               // allow picking multiple at once
+    input.multiple = true; // allow picking multiple at once
     input.accept = accept;
     if (capture) input.setAttribute('capture', capture);
 
@@ -92,7 +92,7 @@ export function UploadInput({
       {files.length > 0 && (
         <ul className="list-disc pl-5 text-xs text-slate-600">
           {files.map((f) => (
-            <li key={f.name}>{f.name}</li>
+            <li key={`${f.name}-${f.size}-${(f as any).lastModified ?? 0}`}>{f.name}</li>
           ))}
         </ul>
       )}
