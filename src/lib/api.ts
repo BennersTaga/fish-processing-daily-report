@@ -43,6 +43,7 @@ export type ListItem = {
   species?: string;
   factory?: string;
   status?: string;
+  reportTime?: string;
 };
 
 export async function fetchList(month: string) {
@@ -58,6 +59,7 @@ export async function uploadB64(payload: {
   fileName?: string;
   contentB64: string;
   mimeType?: string;
+  folderId?: string;
   apiKey?: string;
 }) {
   return post<{ ok: true; result: unknown }>({ action: 'uploadB64' }, payload);
@@ -65,4 +67,8 @@ export async function uploadB64(payload: {
 
 export async function fetchTicket(id: string) {
   return get<{ ok: true; item: Record<string, string> | null }>({ action: 'ticket', id });
+}
+
+export async function closeTicket(ticketId: string) {
+  return post<{ ok: true }>({ action: 'close' }, { ticketId });
 }

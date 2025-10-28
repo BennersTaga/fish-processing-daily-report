@@ -27,6 +27,13 @@ function doPost(e) {
       audit('uploadB64', p.ticketId, origin);
       return respond({ ok: true, result: r });
     }
+    if (action === 'close') {
+      const b = parseBody(e);
+      if (!b.ticketId) return respond({ ok: false, error: 'ticketId required' });
+      const r = appendAction({ ticketId: b.ticketId }, 'closed');
+      audit('close', b.ticketId, origin);
+      return respond({ ok: true, result: r });
+    }
     if (action === 'intake' || action === 'inventory') {
       const b = parseBody(e);
       const r = appendAction(b, action);
@@ -107,6 +114,23 @@ function readHeaders(sh) {
   return sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
 }
 
+function hhmmOf_(v) {
+  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v)) {
+    return Utilities.formatDate(v, TZ, 'HH:mm');
+  }
+  var m = String(v || '').match(/(\d{1,2}):(\d{2})/);
+  return m ? (('0' + m[1]).slice(-2) + ':' + m[2]) : '';
+}
+function baseTicketId_(id) {
+  return String(id || '').replace(/[PS]$/, '');
+}
+function ymOf_(v) {
+  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v)) {
+    return Utilities.formatDate(v, TZ, 'yyyy-MM');
+  }
+  return String(v || '').slice(0, 7);
+}
+
 var FACTORY_CODE = {
   '羽野': 'HN',
   '大道': 'OD',
@@ -162,12 +186,19 @@ function createTicketIdForIntake(row) {
 function appendAction(row, type) {
   const sh = getDbSheet();
   const headers = readHeaders(sh);
-  if (type === 'intake' && !row.ticketId) {
+  const t = String(type || row.type || '').toLowerCase();
+
+  if (t === 'intake' && !row.ticketId) {
     row.ticketId = createTicketIdForIntake(row);
   }
 
-  if (row.ticketId && findRowIndexByTicketId(row.ticketId) > 0) {
-    if (type === 'intake') {
+  if (t === 'closed' && !row.ticketId) {
+    throw new Error('close requires ticketId');
+  }
+
+  const existingIndex = row.ticketId ? findRowIndexByTicketId(row.ticketId) : -1;
+  if (existingIndex > 0) {
+    if (t === 'intake') {
       var y = yyyymmddFrom(row);
       var ab = factoryAbbr(row && row.factory);
       var n = nextSeq(y, ab);
@@ -175,7 +206,7 @@ function appendAction(row, type) {
       if (findRowIndexByTicketId(row.ticketId) > 0) {
         return { skipped: true, reason: 'duplicate ticketId', ticketId: row.ticketId };
       }
-    } else {
+    } else if (t !== 'closed') {
       return { skipped: true, reason: 'duplicate ticketId', ticketId: row.ticketId };
     }
   }
@@ -193,31 +224,63 @@ function listMonth(month) {
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
   const headers = readHeaders(sh);
-  const idx = {};
-  headers.forEach(function (h, i) {
-    idx[h] = i;
-  });
+  const idx = Object.fromEntries(headers.map(function (h, i) {
+    return [h, i];
+  }));
   const vals = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
-  return vals
-    .filter(function (r) {
-      var dateVal = String(r[idx['date']] || '');
-      return month ? dateVal.indexOf(month) === 0 : true;
-    })
-    .map(function (r) {
-      return {
-        date: r[idx['date']],
-        type: r[idx['type']],
-        ticketId: r[idx['ticketId']],
-        species: r[idx['species']],
-        factory: r[idx['factory']],
-        status:
-          r[idx['type']] === 'inventory'
-            ? '報告完了'
-            : r[idx['type']] === 'intake'
-            ? '仕入'
-            : '',
+
+  const map = {};
+  const order = [];
+
+  for (let i = 0; i < vals.length; i++) {
+    const r = vals[i];
+    const base = baseTicketId_(r[idx['ticketId']]);
+    if (!base) continue;
+    if (!map[base]) {
+      map[base] = {
+        firstDate: r[idx['date']] || '',
+        firstTs: r[idx['timestamp']] || '',
+        intakeDate: null,
+        intakeTs: null,
+        species: r[idx['species']] || '',
+        factory: r[idx['factory']] || '',
+        hasInventory: false,
+        closed: false,
       };
+      order.push(base);
+    }
+    const t = String(r[idx['type']] || '').toLowerCase();
+    if (t === 'intake') {
+      map[base].intakeDate = r[idx['date']];
+      map[base].intakeTs = r[idx['timestamp']];
+      map[base].species = r[idx['species']] || map[base].species;
+      map[base].factory = r[idx['factory']] || map[base].factory;
+    } else if (t === 'inventory' || t === 'closed') {
+      map[base].hasInventory = true;
+      if (t === 'closed') {
+        map[base].closed = true;
+      }
+    }
+  }
+
+  const items = [];
+  for (const k of order) {
+    const entry = map[k];
+    const date = entry.intakeDate != null ? entry.intakeDate : entry.firstDate;
+    if (month && ymOf_(date) !== month) continue;
+
+    const ts = entry.intakeTs != null ? entry.intakeTs : entry.firstTs;
+    items.push({
+      date: date,
+      type: entry.hasInventory ? 'inventory' : 'intake',
+      ticketId: k + 'P',
+      species: entry.species,
+      factory: entry.factory,
+      status: entry.closed ? '報告済' : entry.hasInventory ? '報告完了' : '仕入',
+      reportTime: hhmmOf_(ts),
     });
+  }
+  return items;
 }
 
 function findByTicketId(id) {
@@ -262,13 +325,24 @@ function findRowIndexByTicketId(id) {
   return -1;
 }
 
+const DEFAULT_UPLOAD_FOLDER_ID = '1h3RCYDQrsNuBObQwKXsYM-HYtk8kE5R5';
+
+function _sanitizeName_(s) {
+  return String(s || '')
+    .replace(/[\\/:*?"<>|]+/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function uploadB64(p) {
   if (!p || !p.contentB64) throw new Error('contentB64 required');
-  const name = p.fileName || (p.ticketId ? p.ticketId + '.png' : 'upload_' + Date.now() + '.png');
-  const mime = p.mimeType || 'image/png';
-  const blob = Utilities.newBlob(Utilities.base64Decode(p.contentB64), mime, name);
-  const file = DriveApp.getRootFolder().createFile(blob);
-  return { id: file.getId(), url: file.getUrl(), name: file.getName() };
+  var name = _sanitizeName_(p.fileName || (p.ticketId ? p.ticketId + '.png' : 'upload_' + Date.now() + '.png'));
+  var mime = p.mimeType || 'image/png';
+  var folderId = p.folderId || DEFAULT_UPLOAD_FOLDER_ID;
+  var folder = folderId ? DriveApp.getFolderById(folderId) : DriveApp.getRootFolder();
+  var blob = Utilities.newBlob(Utilities.base64Decode(String(p.contentB64)), mime, name);
+  var file = folder.createFile(blob);
+  return { id: file.getId(), url: file.getUrl(), name: file.getName(), folderId: folderId };
 }
 
 function audit(action, ticketId, origin) {
