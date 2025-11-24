@@ -13,6 +13,10 @@ export type IntakeTicket = {
   visual_toxic: string;
   visual_toxic_note: string;
   admin: string;
+  parasiteYN?: string;
+  parasiteFiles?: string;
+  foreignYN?: string;
+  foreignFiles?: string;
 };
 
 export type InventoryReport = {
