@@ -276,6 +276,45 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
           />
         </FormField>
       </div>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <div className="space-y-4">
+          <FormField label="寄生虫確認">
+            <OptionSelect
+              value={ticket.parasiteYN}
+              onChange={(e) => handleChange('parasiteYN')(e.target.value)}
+              options={options.parasiteYN}
+            />
+          </FormField>
+          <FormField label="寄生虫/病変の写真">
+            <UploadInput
+              label="寄生虫の写真を選択"
+              files={parasitePhotos}
+              onFilesChange={setParasitePhotos}
+              disabled={!parasiteRequired}
+              maxFiles={5}
+            />
+          </FormField>
+        </div>
+
+        <div className="space-y-4">
+          <FormField label="異物確認">
+            <OptionSelect
+              value={ticket.foreignYN}
+              onChange={(e) => handleChange('foreignYN')(e.target.value)}
+              options={options.foreignYN}
+            />
+          </FormField>
+          <FormField label="異物の写真">
+            <UploadInput
+              label="異物の写真を選択"
+              files={foreignPhotos}
+              onFilesChange={setForeignPhotos}
+              disabled={!foreignRequired}
+              maxFiles={5}
+            />
+          </FormField>
+        </div>
+      </div>
       <FormActionBar
         onCancel={() => {
           resetTicket();
