@@ -90,6 +90,10 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
   const parasiteRequired = ticket.parasiteYN === '寄生虫あり';
   const foreignRequired = ticket.foreignYN === '異物あり';
 
+  // 必須セレクトの未選択時だけグレーにする
+  const selectVisualState = (value: string, required?: boolean) =>
+    required && !value ? 'bg-gray-100 text-gray-500' : 'bg-white text-gray-900';
+
   const options = useMemo(
     () => ({
       factory: master.factory ?? [],
@@ -166,7 +170,9 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
       console.error(err);
       enqueue({ type: 'intake', payload });
       setState('error');
-      setError(err instanceof Error ? `${err.message}（送信失敗のため端末に保存しました）` : '送信に失敗しました');
+      setError(
+        err instanceof Error ? `${err.message}（送信失敗のため端末に保存しました）` : '送信に失敗しました',
+      );
     }
   };
 
@@ -177,6 +183,7 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <FormField label="工場" required>
           <OptionSelect
+            className={selectVisualState(ticket.factory, true)}
             value={ticket.factory}
             onChange={(e) => handleChange('factory')(e.target.value)}
             options={options.factory}
@@ -201,20 +208,35 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
           />
         </FormField>
         <FormField label="担当者" required>
-          <OptionSelect value={ticket.person} onChange={(e) => handleChange('person')(e.target.value)} options={options.person} />
+          <OptionSelect
+            className={selectVisualState(ticket.person, true)}
+            value={ticket.person}
+            onChange={(e) => handleChange('person')(e.target.value)}
+            options={options.person}
+          />
         </FormField>
         <FormField label="魚種" required>
-          <OptionSelect value={ticket.species} onChange={(e) => handleChange('species')(e.target.value)} options={options.species} />
+          <OptionSelect
+            className={selectVisualState(ticket.species, true)}
+            value={ticket.species}
+            onChange={(e) => handleChange('species')(e.target.value)}
+            options={options.species}
+          />
         </FormField>
         <FormField label="仕入先" required>
           <OptionSelect
+            className={selectVisualState(ticket.supplier, true)}
             value={ticket.supplier}
             onChange={(e) => handleChange('supplier')(e.target.value)}
             options={options.supplier}
           />
         </FormField>
         <FormField label="オゾン処理">
-          <OptionSelect value={ticket.ozone} onChange={(e) => handleChange('ozone')(e.target.value)} options={options.ozone} />
+          <OptionSelect
+            value={ticket.ozone}
+            onChange={(e) => handleChange('ozone')(e.target.value)}
+            options={options.ozone}
+          />
         </FormField>
         <FormField label="オゾン担当">
           <OptionSelect
@@ -238,44 +260,15 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
           />
         </FormField>
         <FormField label="管理担当">
-          <OptionSelect value={ticket.admin} onChange={(e) => handleChange('admin')(e.target.value)} options={options.admin} />
-        </FormField>
-        <FormField label="寄生虫確認">
           <OptionSelect
-            value={ticket.parasiteYN}
-            onChange={(e) => handleChange('parasiteYN')(e.target.value)}
-            options={options.parasiteYN}
-          />
-        </FormField>
-        <FormField label="異物確認">
-          <OptionSelect
-            value={ticket.foreignYN}
-            onChange={(e) => handleChange('foreignYN')(e.target.value)}
-            options={options.foreignYN}
+            value={ticket.admin}
+            onChange={(e) => handleChange('admin')(e.target.value)}
+            options={options.admin}
           />
         </FormField>
       </div>
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        <FormField label="寄生虫/病変の写真">
-          <UploadInput
-            label="寄生虫の写真を選択"
-            files={parasitePhotos}
-            onFilesChange={setParasitePhotos}
-            disabled={!parasiteRequired}
-            maxFiles={5}
-          />
-        </FormField>
 
-        <FormField label="異物の写真">
-          <UploadInput
-            label="異物の写真を選択"
-            files={foreignPhotos}
-            onFilesChange={setForeignPhotos}
-            disabled={!foreignRequired}
-            maxFiles={5}
-          />
-        </FormField>
-      </div>
+      {/* 寄生虫・異物確認 + 写真（1セットだけ） */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <div className="space-y-4">
           <FormField label="寄生虫確認">
@@ -315,6 +308,7 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
           </FormField>
         </div>
       </div>
+
       <FormActionBar
         onCancel={() => {
           resetTicket();
