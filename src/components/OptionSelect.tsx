@@ -1,12 +1,13 @@
 import { SelectHTMLAttributes } from 'react';
 import clsx from 'clsx';
 
-type Props = SelectHTMLAttributes<HTMLSelectElement> & {
+type OptionSelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
   options: string[];
   placeholder?: string;
+  className?: string;
 };
 
-export function OptionSelect({ className, options, placeholder = '選択してください', ...props }: Props) {
+export function OptionSelect({ className, options, placeholder = '選択してください', ...props }: OptionSelectProps) {
   return (
     <select
       className={clsx(
