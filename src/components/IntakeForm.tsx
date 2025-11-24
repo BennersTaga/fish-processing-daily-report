@@ -90,6 +90,7 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
   const parasiteRequired = ticket.parasiteYN === '寄生虫あり';
   const foreignRequired = ticket.foreignYN === '異物あり';
 
+  // 必須セレクトの未選択時だけグレーにする
   const selectVisualState = (value: string, required?: boolean) =>
     required && !value ? 'bg-gray-100 text-gray-500' : 'bg-white text-gray-900';
 
@@ -169,7 +170,9 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
       console.error(err);
       enqueue({ type: 'intake', payload });
       setState('error');
-      setError(err instanceof Error ? `${err.message}（送信失敗のため端末に保存しました）` : '送信に失敗しました');
+      setError(
+        err instanceof Error ? `${err.message}（送信失敗のため端末に保存しました）` : '送信に失敗しました',
+      );
     }
   };
 
@@ -229,7 +232,11 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
           />
         </FormField>
         <FormField label="オゾン処理">
-          <OptionSelect value={ticket.ozone} onChange={(e) => handleChange('ozone')(e.target.value)} options={options.ozone} />
+          <OptionSelect
+            value={ticket.ozone}
+            onChange={(e) => handleChange('ozone')(e.target.value)}
+            options={options.ozone}
+          />
         </FormField>
         <FormField label="オゾン担当">
           <OptionSelect
@@ -253,9 +260,15 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
           />
         </FormField>
         <FormField label="管理担当">
-          <OptionSelect value={ticket.admin} onChange={(e) => handleChange('admin')(e.target.value)} options={options.admin} />
+          <OptionSelect
+            value={ticket.admin}
+            onChange={(e) => handleChange('admin')(e.target.value)}
+            options={options.admin}
+          />
         </FormField>
       </div>
+
+      {/* 寄生虫・異物確認 + 写真（1セットだけ） */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <div className="space-y-4">
           <FormField label="寄生虫確認">
@@ -295,6 +308,7 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
           </FormField>
         </div>
       </div>
+
       <FormActionBar
         onCancel={() => {
           resetTicket();
