@@ -184,6 +184,7 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <FormField label="工場" required>
           <OptionSelect
+            required
             value={report.factory}
             onChange={(e) => handleChange('factory')(e.target.value)}
             options={options.factory}
@@ -214,11 +215,17 @@ export function InventoryForm({ master, onSubmitSuccess, initialValues }: Props)
         </FormField>
 
         <FormField label="担当者" required>
-          <OptionSelect value={report.person} onChange={(e) => handleChange('person')(e.target.value)} options={options.person} />
+          <OptionSelect
+            required
+            value={report.person}
+            onChange={(e) => handleChange('person')(e.target.value)}
+            options={options.person}
+          />
         </FormField>
 
         <FormField label="魚種" required>
           <OptionSelect
+            required
             value={report.species}
             onChange={(e) => handleChange('species')(e.target.value)}
             options={options.species}
