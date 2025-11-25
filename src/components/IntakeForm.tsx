@@ -90,10 +90,6 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
   const parasiteRequired = ticket.parasiteYN === '寄生虫あり';
   const foreignRequired = ticket.foreignYN === '異物あり';
 
-  // 必須セレクトの未選択時だけグレーにする
-  const selectVisualState = (value: string, required?: boolean) =>
-    required && !value ? 'bg-gray-100 text-gray-500' : 'bg-white text-gray-900';
-
   const options = useMemo(
     () => ({
       factory: master.factory ?? [],
@@ -183,7 +179,7 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <FormField label="工場" required>
           <OptionSelect
-            className={selectVisualState(ticket.factory, true)}
+            required
             value={ticket.factory}
             onChange={(e) => handleChange('factory')(e.target.value)}
             options={options.factory}
@@ -209,7 +205,7 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
         </FormField>
         <FormField label="担当者" required>
           <OptionSelect
-            className={selectVisualState(ticket.person, true)}
+            required
             value={ticket.person}
             onChange={(e) => handleChange('person')(e.target.value)}
             options={options.person}
@@ -217,7 +213,7 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
         </FormField>
         <FormField label="魚種" required>
           <OptionSelect
-            className={selectVisualState(ticket.species, true)}
+            required
             value={ticket.species}
             onChange={(e) => handleChange('species')(e.target.value)}
             options={options.species}
@@ -225,7 +221,7 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
         </FormField>
         <FormField label="仕入先" required>
           <OptionSelect
-            className={selectVisualState(ticket.supplier, true)}
+            required
             value={ticket.supplier}
             onChange={(e) => handleChange('supplier')(e.target.value)}
             options={options.supplier}
