@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { recordToSheet, uploadB64 } from '../lib/api';
 import { enqueue } from '../lib/offlineQueue';
 import { IntakeTicket, Master, SubmissionState } from '../types';
@@ -74,9 +74,11 @@ const createDefaultTicket = (): IntakeTicket => ({
 type Props = {
   master: Master;
   onSubmitSuccess?: (ticket: IntakeTicket) => void;
+  initialValues?: Partial<IntakeTicket> | null;
+  isEdit?: boolean;
 };
 
-export function IntakeForm({ master, onSubmitSuccess }: Props) {
+export function IntakeForm({ master, onSubmitSuccess, initialValues, isEdit }: Props) {
   const [ticket, setTicket, resetTicket] = usePersistentState<IntakeTicket>(
     'fish-processing/intake-form',
     createDefaultTicket(),
@@ -87,8 +89,25 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
   const [parasitePhotos, setParasitePhotos] = useState<File[]>([]);
   const [foreignPhotos, setForeignPhotos] = useState<File[]>([]);
 
+  useEffect(() => {
+    if (!initialValues) return;
+    const normalized: Partial<IntakeTicket> = { ...initialValues };
+    if (initialValues.purchaseDate) {
+      normalized.purchaseDate = formatDateInput(initialValues.purchaseDate);
+    } else if ((initialValues as any).date) {
+      normalized.purchaseDate = formatDateInput((initialValues as any).date);
+    }
+    if (initialValues.date) {
+      normalized.date = formatDateInput(initialValues.date);
+    }
+    setTicket((prev) => ({ ...prev, ...normalized }));
+  }, [initialValues, setTicket]);
+
   const parasiteRequired = ticket.parasiteYN === '寄生虫あり';
   const foreignRequired = ticket.foreignYN === '異物あり';
+  const isEditing = Boolean(isEdit);
+  const existingParasiteFiles = Boolean(ticket.parasiteFiles && ticket.parasiteFiles.trim());
+  const existingForeignFiles = Boolean(ticket.foreignFiles && ticket.foreignFiles.trim());
 
   const options = useMemo(
     () => ({
@@ -114,7 +133,16 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
   );
 
   const handleChange = (key: keyof IntakeTicket) => (value: string) => {
-    setTicket((prev) => ({ ...prev, [key]: value }));
+    setTicket((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === 'parasiteYN' && value !== '寄生虫あり') {
+        next.parasiteFiles = '';
+      }
+      if (key === 'foreignYN' && value !== '異物あり') {
+        next.foreignFiles = '';
+      }
+      return next;
+    });
     if (key === 'parasiteYN' && value !== '寄生虫あり') {
       setParasitePhotos([]);
     }
@@ -128,27 +156,48 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
     if (!requiredFilled) return;
     setState('submitting');
     setError(null);
-    if (parasiteRequired && parasitePhotos.length === 0) {
+    if (parasiteRequired && parasitePhotos.length === 0 && !existingParasiteFiles) {
       setState('error');
       setError('寄生虫あり の場合は写真が1枚以上必須です');
       return;
     }
 
-    if (foreignRequired && foreignPhotos.length === 0) {
+    if (foreignRequired && foreignPhotos.length === 0 && !existingForeignFiles) {
       setState('error');
       setError('異物あり の場合は写真が1枚以上必須です');
       return;
     }
 
-    const payload: IntakeTicket = { ...ticket, parasiteFiles: '', foreignFiles: '' };
+    const payload: IntakeTicket & { edit?: boolean; mode?: string } = {
+      ...ticket,
+      parasiteFiles: '',
+      foreignFiles: '',
+    };
+    if (isEditing) {
+      payload.edit = true;
+      payload.mode = 'edit';
+    }
     try {
-      if (parasitePhotos.length) {
-        const names = await uploadFiles('寄生虫', payload, parasitePhotos);
-        payload.parasiteFiles = names.join('\n');
+      if (ticket.parasiteYN === '寄生虫あり') {
+        if (parasitePhotos.length) {
+          const names = await uploadFiles('寄生虫', payload, parasitePhotos);
+          payload.parasiteFiles = names.join('\n');
+        } else if (existingParasiteFiles) {
+          payload.parasiteFiles = ticket.parasiteFiles || '';
+        }
+      } else {
+        payload.parasiteFiles = '';
       }
-      if (foreignPhotos.length) {
-        const names = await uploadFiles('異物', payload, foreignPhotos);
-        payload.foreignFiles = names.join('\n');
+
+      if (ticket.foreignYN === '異物あり') {
+        if (foreignPhotos.length) {
+          const names = await uploadFiles('異物', payload, foreignPhotos);
+          payload.foreignFiles = names.join('\n');
+        } else if (existingForeignFiles) {
+          payload.foreignFiles = ticket.foreignFiles || '';
+        }
+      } else {
+        payload.foreignFiles = '';
       }
 
       const res = await recordToSheet(payload, 'intake');
@@ -316,7 +365,7 @@ export function IntakeForm({ master, onSubmitSuccess }: Props) {
         }}
         submitting={state === 'submitting'}
         disabled={!requiredFilled}
-        submitLabel="仕入れを報告する"
+        submitLabel={isEditing ? '仕入れを修正する' : '仕入れを報告する'}
       />
     </form>
   );

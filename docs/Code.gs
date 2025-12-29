@@ -190,6 +190,7 @@ function appendAction(row, type) {
   const sh = getDbSheet();
   const headers = readHeaders(sh);
   const t = String(type || row.type || '').toLowerCase();
+  const intakeEditMode = t === 'intake' && (row.edit === true || String(row.mode || '') === 'edit');
 
   // intake：サーバで採番
   if (t === 'intake' && !row.ticketId) {
@@ -204,7 +205,7 @@ function appendAction(row, type) {
   // 既存 ticketId 重複の取り扱い
   const existingIndex = row.ticketId ? findRowIndexByTicketId(row.ticketId) : -1;
   if (existingIndex > 0) {
-    if (t === 'intake') {
+    if (t === 'intake' && !intakeEditMode) {
       var y = yyyymmddFrom(row);
       var ab = factoryAbbr(row && row.factory);
       var n = nextSeq(y, ab);
@@ -212,7 +213,7 @@ function appendAction(row, type) {
       if (findRowIndexByTicketId(row.ticketId) > 0) {
         return { skipped: true, reason: 'duplicate ticketId', ticketId: row.ticketId };
       }
-    } else if (t !== 'closed') {
+    } else if (t !== 'closed' && !intakeEditMode) {
       return { skipped: true, reason: 'duplicate ticketId', ticketId: row.ticketId };
     }
   }
@@ -299,7 +300,7 @@ function findByTicketId(id) {
   const idx = {};
   headers.forEach(function (h, i) { idx[h] = i; });
   const vals = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
-  for (var i = 0; i < vals.length; i++) {
+  for (var i = vals.length - 1; i >= 0; i--) {
     if (vals[i][idx['ticketId']] === id) {
       var result = {};
       headers.forEach(function (h, col) { result[h] = vals[i][col]; });
