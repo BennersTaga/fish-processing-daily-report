@@ -10,7 +10,8 @@ import { useMasterOptions } from './hooks/useMasterOptions';
 import { closeTicket, fetchList, fetchTicket, formatMonth } from './lib/api';
 import type { ListItem } from './lib/api';
 import { syncPending } from './lib/offlineQueue';
-import { InventoryReport, Master } from './types';
+import { InventoryReport, IntakeTicket, Master } from './types';
+import { formatDateInput } from './lib/date';
 
 const LEGACY_KEYS = ['fish-demo.intakeSubmissions', 'fish-demo.inventoryReports', 'fish-demo.master'];
 
@@ -169,7 +170,25 @@ function HomePage() {
                 const canOpenInventory = item.status === '仕入';
                 return (
                   <tr key={item.ticketId} className={done ? 'opacity-60' : undefined}>
-                    <td className="px-4 py-2">{formatYmdOnly(item.date)}</td>
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-primary hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
+                          onClick={() => {
+                            if (!window.confirm('修正を本当にしますか？')) return;
+                            navigate(`/intake?ticketId=${encodeURIComponent(item.ticketId)}&mode=edit`);
+                          }}
+                          aria-label="仕入れを修正する"
+                          title="仕入れを修正する"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                            <path d="M3.5 15.5a.5.5 0 0 0 .5.5h2.879a.5.5 0 0 0 .354-.146l9.5-9.5a.5.5 0 0 0 0-.708l-2.879-2.88a.5.5 0 0 0-.707 0l-9.5 9.5a.5.5 0 0 0-.147.354V15.5Zm1-1.207 9-9L14.207 5.5l-9 9H4.5v-.207Z" />
+                          </svg>
+                        </button>
+                        <span>{formatYmdOnly(item.date)}</span>
+                      </div>
+                    </td>
                     <td className="px-4 py-2">{item.reportTime || '—'}</td>
                     <td className="px-4 py-2">{item.species || '—'}</td>
                     <td className="px-4 py-2">{item.factory || '—'}</td>
@@ -215,9 +234,90 @@ function HomePage() {
 }
 
 function IntakePage({ master }: { master: Master }) {
+  const query = useHashQuery();
+  const ticketId = query.get('ticketId') || query.get('id') || query.get('tid') || '';
+  const mode = query.get('mode') || '';
+  const [ticket, setTicket] = useState<Record<string, string> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (mode !== 'edit' || !ticketId) {
+      setTicket(null);
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const { item } = await fetchTicket(ticketId);
+        if (!cancelled) {
+          setTicket(item || null);
+        }
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'チケット取得に失敗しました');
+          setTicket(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, ticketId]);
+
+  const initialValues = useMemo<Partial<IntakeTicket> | null>(() => {
+    if (ticket) {
+      return {
+        ticketId: ticket.ticketId || ticketId,
+        factory: ticket.factory || '',
+        species: ticket.species || '',
+        purchaseDate: ticket.purchaseDate ? formatDateInput(ticket.purchaseDate) : ticket.date ? formatDateInput(ticket.date) : '',
+        date: ticket.date ? formatDateInput(ticket.date) : '',
+        person: ticket.person || '',
+        supplier: ticket.supplier || '',
+        ozone: ticket.ozone || '',
+        ozone_person: ticket.ozone_person || '',
+        visual_toxic: ticket.visual_toxic || '',
+        visual_toxic_note: ticket.visual_toxic_note || '',
+        admin: ticket.admin || '',
+        parasiteYN: ticket.parasiteYN || '',
+        parasiteFiles: ticket.parasiteFiles || '',
+        foreignYN: ticket.foreignYN || '',
+        foreignFiles: ticket.foreignFiles || '',
+      };
+    }
+    if (ticketId) {
+      return { ticketId };
+    }
+    return null;
+  }, [ticket, ticketId]);
+
   return (
     <SectionCard title="仕入れを報告" description="入力後すぐにGoogleシートへ記録します。">
-      <IntakeForm master={master} />
+      {error ? <Alert variant="error" title="取得エラー" description={error} /> : null}
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <LoadingSpinner />
+          チケット情報を取得中です…
+        </div>
+      ) : null}
+      {ticket ? (
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+          <p>魚種: {ticket.species || '—'}</p>
+          <p>工場: {ticket.factory || '—'}</p>
+          <p>仕入日: {ticket.purchaseDate || ticket.date || '—'}</p>
+        </div>
+      ) : null}
+      <IntakeForm master={master} initialValues={initialValues} isEdit={mode === 'edit'} />
     </SectionCard>
   );
 }
